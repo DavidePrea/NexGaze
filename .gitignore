@@ -11,7 +11,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
-/assets/
+/assets/videos/*.mp4
 
 # IntelliJ related
 *.iml
