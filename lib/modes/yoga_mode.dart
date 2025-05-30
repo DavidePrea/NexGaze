@@ -1,4 +1,4 @@
-// mode_5_screen.dart aggiornato: orologio in alto a sinistra, battiti + cuore in alto a destra
+// yoga_mode.dart aggiornato: orologio in alto a sinistra, battiti + cuore in alto a destra
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/services.dart';

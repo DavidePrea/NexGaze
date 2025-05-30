@@ -1,12 +1,12 @@
 // menu_screen.dart – ripristinato e modificato SOLO logo (h 20), testo, e voce Setup
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Added for SystemNavigator
-import '../modes/mode_1_screen.dart';
-import '../modes/mode_2_screen.dart';
-import '../modes/mode_3_screen.dart';
-import '../modes/mode_4_screen.dart';
-import '../modes/mode_5_screen.dart';
-import '../modes/mode_6_screen.dart';
+import '../modes/hiking_mode.dart';
+import '../modes/running_mode.dart';
+import '../modes/cycling_mode.dart';
+import '../modes/skiing_mode.dart';
+import '../modes/yoga_mode.dart';
+import '../modes/relax_mode.dart';
 import '../screens/setup_screen.dart'; // Added import for SetupScreen
 
 class MenuScreen extends StatelessWidget {
