@@ -121,6 +121,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.11"
+  em_st_artifacts:
+    dependency: "direct main"
+    description:
+      name: em_st_artifacts
+      sha256: "057e5043434c9b6a8fe19fe76c564ec63772f6f1618486b5babb7630f1c5bb53"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.1"
   equatable:
     dependency: transitive
     description:
@@ -512,6 +520,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  neurosdk2:
+    dependency: "direct main"
+    description:
+      name: neurosdk2
+      sha256: "9d31dfac2aa04d8412f1d6732e9da0627e2238c6a3368f236f5c15932266cf62"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.17"
   path:
     dependency: transitive
     description:

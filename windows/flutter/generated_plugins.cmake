@@ -5,10 +5,12 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   flutter_tts
   geolocator_windows
+  neurosdk2
   permission_handler_windows
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  em_st_artifacts
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)
