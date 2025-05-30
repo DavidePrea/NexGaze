@@ -12,6 +12,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' as latlong;
 import 'package:flutter_tts/flutter_tts.dart';
+import '../widgets/heart_monitor/heart_monitor_controller.dart';
+import '../widgets/heart_monitor/heart_monitor_widget.dart';
 
 class Mode3Screen extends StatefulWidget {
   const Mode3Screen({super.key});
@@ -21,10 +23,7 @@ class Mode3Screen extends StatefulWidget {
 }
 
 class _Mode3ScreenState extends State<Mode3Screen> {
-  GoogleMapController? _mapController;
-  bool _mapReady = false;
-
-
+  late GoogleMapController _mapController;
   LatLng? _currentPosition;
   LatLng? _lastPosition;
   DateTime? _lastTime;
@@ -46,6 +45,9 @@ class _Mode3ScreenState extends State<Mode3Screen> {
   Timer? _mapInteractionTimer;
   final FlutterTts _tts = FlutterTts();
 
+  // Dichiarazione del controller per il battito cardiaco
+  late HeartMonitorController _heartController;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +55,8 @@ class _Mode3ScreenState extends State<Mode3Screen> {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
+    _heartController = HeartMonitorController();
+    _heartController.startMonitoring(); // Avvia il monitoraggio
     _retryGoogleMap();
     _startLocationUpdates();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -60,6 +64,18 @@ class _Mode3ScreenState extends State<Mode3Screen> {
         _currentTime = DateFormat.Hms().format(DateTime.now());
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    _clockTimer.cancel();
+    _mapInteractionTimer?.cancel();
+    _heartController.stopMonitoring(); // Ferma il monitoraggio
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    super.dispose();
   }
 
   @override
@@ -121,37 +137,20 @@ class _Mode3ScreenState extends State<Mode3Screen> {
         _currentPosition = newLatLng;
       });
 
-if (_followUser && _mapReady && _mapController != null) {
-  _mapController!
-    .getZoomLevel()
-    .then((zoom) {
-      _mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: newLatLng,
-            zoom: zoom,
-            bearing: _bearing ?? 0,
-          ),
-        ),
-      );
-    })
-    .catchError((e) {
-      debugPrint('Errore durante l\'animazione mappa: $e');
+      if (_followUser && _mapController != null) {
+        _mapController.getZoomLevel().then((currentZoom) {
+          _mapController.animateCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: newLatLng,
+                zoom: currentZoom,
+                bearing: _bearing ?? 0,
+              ),
+            ),
+          );
+        });
+      }
     });
-}      
-    });
-  }
-
-  @override
-  void dispose() {
-    _positionStream?.cancel();
-    _clockTimer.cancel();
-    _mapInteractionTimer?.cancel();
-    _tts.stop(); // Stop any ongoing speech
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-    ]);
-    super.dispose();
   }
 
   Future<void> _getRoute() async {
@@ -168,13 +167,10 @@ if (_followUser && _mapReady && _mapController != null) {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-
-        // Added checks for nested data structure
-        if (data['routes'] == null || data['routes'].isEmpty || data['routes'][0]['overview_polyline'] == null || data['routes'][0]['overview_polyline']['points'] == null) {
-          debugPrint('Nessun percorso trovato o dati incompleti.');
+        if (data['routes'].isEmpty) {
+          debugPrint('Nessun percorso trovato.');
           setState(() {
             _distanceToDestination = null;
-            _polylines.clear(); // Clear previous polyline if no route is found
           });
           return;
         }
@@ -209,14 +205,12 @@ if (_followUser && _mapReady && _mapController != null) {
         debugPrint('Errore nella richiesta API: ${response.statusCode}');
         setState(() {
           _distanceToDestination = null;
-          _polylines.clear(); // Clear polyline on API error
         });
       }
     } catch (e) {
       debugPrint('Errore durante la chiamata API: $e');
       setState(() {
         _distanceToDestination = null;
-        _polylines.clear(); // Clear polyline on exception
       });
     }
   }
@@ -235,88 +229,95 @@ if (_followUser && _mapReady && _mapController != null) {
   }
 
   Widget _buildLeftInfo() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start, // Allinea in alto
-            children: [
-              const Text(
-                'TIME',
-                style: TextStyle(color: Colors.white, fontSize: 14), // Font ridotto a 14
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _currentTime,
-                style: const TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start, // Allinea in alto
-            children: [
-              const Text(
-                'SPEED',
-                style: TextStyle(color: Colors.white, fontSize: 14), // Font ridotto a 14
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${_speed != null ? _speed!.toStringAsFixed(1) : '--'} km/h',
-                style: const TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start, // Allinea in alto
-            children: [
-              const Text(
-                'DIST',
-                style: TextStyle(color: Colors.white, fontSize: 14), // Font ridotto a 14
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${_totalDistance.toStringAsFixed(1)} m',
-                style: const TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start, // Allinea in alto
-            children: [
-              const Text(
-                'DEST',
-                style: TextStyle(color: Colors.white, fontSize: 14), // Font ridotto a 14
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${_distanceToDestination != null ? _distanceToDestination!.toStringAsFixed(1) : '--'} m',
-                style: const TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start, // Allinea in alto
-            children: [
-              const Text(
-                'ETA',
-                style: TextStyle(color: Colors.white, fontSize: 14), // Font ridotto a 14
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${_calculateETA()} min',
-                style: const TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ],
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'TIME',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _currentTime,
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'SPEED',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${_speed != null ? _speed!.toStringAsFixed(1) : '--'} km/h',
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'DIST',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${_totalDistance.toStringAsFixed(1)} m',
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'DEST',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${_distanceToDestination != null ? _distanceToDestination!.toStringAsFixed(1) : '--'} m',
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'ETA',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${_calculateETA()} min',
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRightInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Aggiungi qui eventuali altri dati, se necessario
+        const SizedBox(height: 12),
+        HeartMonitorWidget(controller: _heartController),
+      ],
     );
   }
 
@@ -328,7 +329,6 @@ if (_followUser && _mapReady && _mapController != null) {
       ),
       onMapCreated: (controller) {
         _mapController = controller;
-        _mapReady = true;
       },
       onCameraMoveStarted: () {
         _followUser = false;
@@ -346,7 +346,7 @@ if (_followUser && _mapReady && _mapController != null) {
         _getRoute();
         await _tts.setLanguage('en-US');
         await _tts.setPitch(1.0);
-        await _tts.speak("Go my friend! Your destination is waiting for you!");
+        await _tts.speak("Go my friend, your destination is waiting for you!");
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Destination set.')),
         );
@@ -361,39 +361,36 @@ if (_followUser && _mapReady && _mapController != null) {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Row(
         children: [
+          // Area nera a sinistra (2/3 dello schermo)
           Expanded(
             flex: 2,
             child: Stack(
               children: [
-                Positioned.fill(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: _buildLeftInfo(),
-                      ),
-                      const Spacer(),
-                    ],
-                  ),
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  child: _buildLeftInfo(),
                 ),
                 Positioned(
-                  left: 24,
+                  top: 16,
+                  right: 16,
+                  child: _buildRightInfo(),
+                ),
+                Positioned(
                   bottom: 16,
+                  left: 16,
                   child: Image.asset('assets/icons/cycling.png', height: 50),
                 ),
               ],
             ),
           ),
-          SizedBox(
-            width: screenWidth / 3,
-            height: double.infinity,
+          // Mappa a destra (1/3 dello schermo)
+          Expanded(
+            flex: 1,
             child: _mapVisible ? _buildGoogleMap() : const SizedBox(),
           ),
         ],
