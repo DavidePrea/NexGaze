@@ -46,11 +46,23 @@ class _Mode6ScreenState extends State<Mode6Screen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _isInitialized
-          ? Center(
-        child: AspectRatio(
-          aspectRatio: _controller.value.aspectRatio,
-          child: VideoPlayer(_controller),
-        ),
+          ? Stack(
+        children: [
+          Center(
+            child: AspectRatio(
+              aspectRatio: _controller.value.aspectRatio,
+              child: VideoPlayer(_controller),
+            ),
+          ),
+          Positioned(
+            bottom: 10,
+            left: 10,
+            child: Image.asset(
+              'assets/icons/relax.png',
+              height: 50,
+            ),
+          ),
+        ],
       )
           : Center(child: CircularProgressIndicator()),
     );

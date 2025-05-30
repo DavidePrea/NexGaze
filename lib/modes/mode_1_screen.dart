@@ -34,7 +34,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
   DateTime? _lastTime;
 
   late Timer _timer;
-  String _currentTime = DateFormat.Hms().format(DateTime.now());
+  String _currentTime = DateFormat.Hm().format(DateTime.now()); // Solo ore e minuti
   final MapController _mapController = MapController();
   final Distance _distance = const Distance();
 
@@ -65,7 +65,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
       setState(() => _magneticDirection = event.heading);
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() => _currentTime = DateFormat.Hms().format(DateTime.now()));
+      setState(() => _currentTime = DateFormat.Hm().format(DateTime.now()));
     });
   }
 
@@ -175,6 +175,10 @@ class _Mode1ScreenState extends State<Mode1Screen> {
       setState(() {
         _currentPosition = newLatLng;
         _altitude = position.altitude;
+        // Centra la mappa sulla nuova posizione con zoom corrente
+        if (_currentPosition != null) {
+          _mapController.move(_currentPosition!, 17.0); // Usa uno zoom fisso (17) per semplicità
+        }
       });
 
       _fetchWeather(position.latitude, position.longitude);
@@ -191,7 +195,15 @@ class _Mode1ScreenState extends State<Mode1Screen> {
   Widget _buildDirectionIndicator() {
     final double? direction =
     (_bearing != null && _currentPosition != null) ? _bearing : _magneticDirection;
-    final angle = (direction ?? 0) * (math.pi / 180);
+    if (direction == null) {
+      return const Text(
+        '--',
+        style: TextStyle(color: Colors.white, fontSize: 14),
+      );
+    }
+    // Se stiamo usando _magneticDirection (bussola magnetica), inverti l'angolo
+    final bool isUsingMagnetic = _bearing == null || _currentPosition == null;
+    final angle = (isUsingMagnetic ? -direction : direction) * (math.pi / 180);
     final label = _getDirectionLabel(direction);
     return Column(
       children: [
@@ -201,7 +213,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
         ),
         const SizedBox(height: 4),
         Text(
-          direction != null ? '${direction.toStringAsFixed(0)}° $label' : '--',
+          '${direction.toStringAsFixed(0)}° $label',
           style: const TextStyle(color: Colors.white, fontSize: 14),
         ),
       ],
@@ -221,9 +233,135 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     }
   }
 
+  Widget _buildLeftInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'TIME',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _currentTime,
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'DIST',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${_totalDistance.toStringAsFixed(1)} m',
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'SPEED',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _speed != null ? '${_speed!.toStringAsFixed(1)} km/h' : '--',
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'STEPS',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$_steps',
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildDirectionIndicator(),
+      ],
+    );
+  }
+
+  Widget _buildRightInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'ALT',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _altitude != null ? '${_altitude!.toStringAsFixed(1)} m' : '--',
+              style: const TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (_temperature != null)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'TEMP',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                "$_temperature",
+                style: const TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            ],
+          ),
+        const SizedBox(height: 16),
+        if (_weatherTrend != null)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Text(
+                'NEXT 6H',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              const SizedBox(width: 8),
+              _buildWeatherIcon() ?? Container(),
+            ],
+          ),
+        const SizedBox(height: 16),
+        HeartMonitorWidget(controller: _heartController),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black, // Sfondo nero per uniformità
       body: Row(
         children: [
           Expanded(
@@ -233,60 +371,17 @@ class _Mode1ScreenState extends State<Mode1Screen> {
                 Positioned(
                   top: 16,
                   left: 16,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _currentPosition != null
-                            ? 'POS: ${_currentPosition!.latitude.toStringAsFixed(6)}, ${_currentPosition!.longitude.toStringAsFixed(6)}'
-                            : 'POS: ...',
-                        style: const TextStyle(color: Colors.white, fontSize: 18),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('TIME: $_currentTime', style: const TextStyle(color: Colors.white, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text('DIST: ${_totalDistance.toStringAsFixed(1)} m',
-                          style: const TextStyle(color: Colors.white, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text('SPEED: ${_speed != null ? _speed!.toStringAsFixed(1) : '--'} km/h',
-                          style: const TextStyle(color: Colors.white, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text('STEPS: $_steps',
-                          style: const TextStyle(color: Colors.white, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      _buildDirectionIndicator(),
-                    ],
-                  ),
+                  child: _buildLeftInfo(),
                 ),
                 Positioned(
                   top: 16,
                   right: 16,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        _altitude != null ? 'ALT: ${_altitude!.toStringAsFixed(1)} m' : 'ALT: ...',
-                        style: const TextStyle(color: Colors.white, fontSize: 18),
-                      ),
-                      const SizedBox(height: 12),
-                      if (_temperature != null)
-                        Text("TEMP: $_temperature",
-                            style: const TextStyle(color: Colors.white, fontSize: 16)),
-                      const SizedBox(height: 6),
-                      if (_weatherTrend != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            const Text("NEXT 6H:", style: TextStyle(color: Colors.white, fontSize: 16)),
-                            const SizedBox(width: 8),
-                            _buildWeatherIcon() ?? Container(),
-                          ],
-                        ),
-                      const SizedBox(height: 12),
-                      HeartMonitorWidget(controller: _heartController),
-                    ],
-                  ),
+                  child: _buildRightInfo(),
+                ),
+                Positioned(
+                  bottom: 16,
+                  left: 16,
+                  child: Image.asset('assets/icons/hiking.png', height: 50),
                 ),
               ],
             ),

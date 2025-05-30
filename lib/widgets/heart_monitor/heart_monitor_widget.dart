@@ -17,19 +17,26 @@ class HeartMonitorWidget extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
-              'BPM: ',
-              style: const TextStyle(fontSize: 18, color: Colors.white),
-            ),
-            Text(
-              '${controller.bpm}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+            // Colonna per i testi allineati in alto
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'BPM',
+                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                ),
+                Text(
+                  '${controller.bpm}',
+                  style: const TextStyle(fontSize: 24, color: Colors.white),
+                ),
+              ],
             ),
             const SizedBox(width: 8),
+            // Icona del cuore a destra
             Icon(
               Icons.favorite,
               color: controller.pulse ? Colors.red : Colors.grey[800],
-              size: 24, // 50% of previous size (was 48)
+              size: 24, // Dimensione invariata come da codice originale
             ),
           ],
         );
