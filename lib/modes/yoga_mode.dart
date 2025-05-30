@@ -1,4 +1,4 @@
-// yoga_mode.dart aggiornato: orologio in alto a sinistra, battiti + cuore in alto a destra
+// mode_5_screen.dart aggiornato: orologio in alto a sinistra, battiti + cuore in alto a destra
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 
 import '../widgets/heart_monitor/heart_monitor_controller.dart';
 import '../widgets/heart_monitor/heart_monitor_widget.dart';
+import '../widgets/brain_bit/brain_bit_controller.dart'; // Added import
+import '../widgets/brain_bit/brain_bit_widget.dart';     // Added import
 
 class Mode5Screen extends StatefulWidget {
   @override
@@ -17,6 +19,7 @@ class _Mode5ScreenState extends State<Mode5Screen> {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   late HeartMonitorController _heartController;
+  late BrainBitController _brainBitController; // Added controller
   late Timer _clockTimer;
   String _currentTime = DateFormat.Hm().format(DateTime.now());
 
@@ -31,6 +34,9 @@ class _Mode5ScreenState extends State<Mode5Screen> {
 
     _heartController = HeartMonitorController();
     _heartController.startMonitoring();
+
+    _brainBitController = BrainBitController(); // Initialized controller
+    _brainBitController.startMonitoring();      // Started monitoring
 
     _controller = VideoPlayerController.asset('assets/videos/yoga.mp4')
       ..initialize().then((_) {
@@ -51,6 +57,7 @@ class _Mode5ScreenState extends State<Mode5Screen> {
   void dispose() {
     _controller.dispose();
     _heartController.stopMonitoring();
+    _brainBitController.stopMonitoring(); // Disposed controller
     _clockTimer.cancel();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -87,6 +94,11 @@ class _Mode5ScreenState extends State<Mode5Screen> {
             top: 16,
             right: 16,
             child: HeartMonitorWidget(controller: _heartController),
+          ),
+          Positioned( // Added BrainBitWidget
+            bottom: 16,
+            left: 16,
+            child: BrainBitWidget(controller: _brainBitController),
           ),
         ],
       )
