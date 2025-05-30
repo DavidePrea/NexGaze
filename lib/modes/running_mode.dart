@@ -43,6 +43,14 @@ class _Mode2ScreenState extends State<Mode2Screen> {
 
   late HeartMonitorController _heartController;
 
+  // Variabili per il cronometro
+  Timer? _chronoTimer;
+  Duration _chronoDuration = Duration.zero;
+  bool _isChronoRunning = false;
+
+  // MethodChannel per i tasti del telecomando
+  static const platform = MethodChannel('com.example.app/keyevents');
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +71,9 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _currentTime = DateFormat.Hm().format(DateTime.now()));
     });
+
+    // Inizializza il listener per i tasti del telecomando
+    _listenForKeyEvents();
   }
 
   @override
@@ -73,7 +84,63 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     ]);
     _heartController.stopMonitoring();
     _timer.cancel();
+    _chronoTimer?.cancel();
     super.dispose();
+  }
+
+  void _listenForKeyEvents() {
+    platform.setMethodCallHandler((call) async {
+      if (call.method == "keyDown") {
+        int keyCode = call.arguments;
+        _handleKeyDown(keyCode);
+      } else if (call.method == "keyUp") {
+        int keyCode = call.arguments;
+        _handleKeyUp(keyCode);
+      }
+    });
+  }
+
+  void _handleKeyDown(int keyCode) {
+    setState(() {
+      switch (keyCode) {
+        case 24: // KEYCODE_VOLUME_UP (Tasto Su)
+          if (_isChronoRunning) {
+            // Ferma il cronometro
+            _chronoTimer?.cancel();
+            _isChronoRunning = false;
+          } else {
+            // Avvia il cronometro
+            _chronoTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+              setState(() {
+                _chronoDuration = _chronoDuration + const Duration(seconds: 1);
+              });
+            });
+            _isChronoRunning = true;
+          }
+          break;
+      }
+    });
+  }
+
+  void _handleKeyUp(int keyCode) {
+    setState(() {
+      switch (keyCode) {
+        case 66: // KEYCODE_ENTER (Tasto Centrale)
+        // Resetta il cronometro
+          _chronoTimer?.cancel();
+          _isChronoRunning = false;
+          _chronoDuration = Duration.zero;
+          break;
+      }
+    });
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = twoDigits(duration.inHours);
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$hours:$minutes:$seconds';
   }
 
   Future<void> _requestPermissions() async {
@@ -166,7 +233,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
 
   Widget _buildDirectionIndicator() {
     final double? direction =
-        (_bearing != null && _currentPosition != null) ? _bearing : _magneticDirection;
+    (_bearing != null && _currentPosition != null) ? _bearing : _magneticDirection;
     if (direction == null) {
       return const Text(
         '--',
@@ -293,6 +360,25 @@ class _Mode2ScreenState extends State<Mode2Screen> {
       backgroundColor: Colors.black, // Sfondo nero per uniformità
       body: Stack(
         children: [
+          // Cronometro in alto al centro
+          Positioned(
+            top: 16,
+            left: 0,
+            right: 0,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'CRONO',
+                  style: TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                Text(
+                  _formatDuration(_chronoDuration),
+                  style: const TextStyle(color: Colors.white, fontSize: 24),
+                ),
+              ],
+            ),
+          ),
           Positioned(
             top: 16,
             left: 16,

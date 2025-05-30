@@ -68,14 +68,14 @@ class MenuScreen extends StatelessWidget {
                       MaterialPageRoute(builder: (_) => const SetupScreen()),
                     ),
                     child: const Text(
-                      'Setup',
+                      '  Setup',
                       style: TextStyle(color: Colors.red, fontSize: 16),
                     ),
                   ),
                   GestureDetector(
                     onTap: () => SystemNavigator.pop(), // Changed to exit the app
                     child: const Text(
-                      'Exit',
+                      'Exit  ',
                       style: TextStyle(color: Colors.red, fontSize: 16),
                     ),
                   ),
