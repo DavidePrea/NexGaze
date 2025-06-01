@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -6,47 +5,35 @@ import 'package:neurosdk2/neurosdk2.dart' as bb;
 import 'package:em_st_artifacts/em_st_artifacts.dart' as em;
 
 class BrainBitController extends ChangeNotifier {
-  /* -------------------------------------------------- */
-  /* Campi privati                                      */
-  /* -------------------------------------------------- */
-  late bb.Scanner _scanner;                   // scanner BLE BrainBit
-  List<bb.FSensorInfo> _devices = [];        // dispositivi trovati
-  final bool _autoConnect;                    // autoconnessione opzionale
+  late bb.Scanner _scanner;
+  List<bb.FSensorInfo> _devices = [];
+  final bool _autoConnect;
 
-  bb.BrainBit? _sensor;                       // sensore attivo
+  bb.BrainBit? _sensor;
   StreamSubscription<List<bb.BrainBitSignalData>>? _sigSub;
 
-  em.EmotionalMath? _emo;                    // motore Emotions
-  bool _calibrated = false;                  // calibrazione completata?
+  em.EmotionalMath? _emo;
+  bool _calibrated = false;
 
   bool _scannerCreated = false;
-  bool _isScanning   = false;
-  bool _isConnected  = false;
+  bool _isScanning = false;
+  bool _isConnected = false;
 
-  double? _attention; // 0‑100
-  double? _relax;     // 0‑100
+  double? _attention;
+  double? _relax;
 
-  /* -------------------------------------------------- */
-  /* Costruttore                                        */
-  /* -------------------------------------------------- */
   BrainBitController({bool autoConnect = true}) : _autoConnect = autoConnect;
 
-  /* -------------------------------------------------- */
-  /* Getters                                            */
-  /* -------------------------------------------------- */
-  bool get isScanning   => _isScanning;
-  bool get isConnected  => _isConnected;
+  bool get isScanning => _isScanning;
+  bool get isConnected => _isConnected;
   bool get isCalibrated => _calibrated;
 
   List<bb.FSensorInfo> get devices => List.unmodifiable(_devices);
 
-  double? get attention  => _attention;
-  double? get relax      => _relax;          // sinonimo più leggibile
-  double? get meditation => _relax;          // compat per vecchio widget
+  double? get attention => _attention;
+  double? get relax => _relax;
+  double? get meditation => _relax;
 
-  /* -------------------------------------------------- */
-  /* API alto livello                                   */
-  /* -------------------------------------------------- */
   Future<void> startMonitoring() async {
     await _ensureScanner();
     await _startScan();
@@ -57,9 +44,6 @@ class BrainBitController extends ChangeNotifier {
     await _stopScan();
   }
 
-  /* -------------------------------------------------- */
-  /* Setup Scanner                                      */
-  /* -------------------------------------------------- */
   Future<void> _ensureScanner() async {
     if (_scannerCreated) return;
 
@@ -68,13 +52,10 @@ class BrainBitController extends ChangeNotifier {
     _scanner.sensorsStream.listen((list) async {
       _devices = list;
 
-      // Autoconnect (facoltativo)
       if (_autoConnect && _devices.isNotEmpty && !_isConnected) {
         try {
           await _connect(_devices.first);
-        } catch (_) {
-          // ignora errori di connessione, continua a scansionare
-        }
+        } catch (_) {}
       }
 
       notifyListeners();
@@ -83,9 +64,6 @@ class BrainBitController extends ChangeNotifier {
     _scannerCreated = true;
   }
 
-  /* -------------------------------------------------- */
-  /* Permessi                                           */
-  /* -------------------------------------------------- */
   Future<bool> _checkBlePermissions() async {
     final statuses = await [
       Permission.bluetoothScan,
@@ -95,9 +73,6 @@ class BrainBitController extends ChangeNotifier {
     return statuses.values.every((s) => s.isGranted);
   }
 
-  /* -------------------------------------------------- */
-  /* Scansione                                          */
-  /* -------------------------------------------------- */
   Future<void> _startScan() async {
     if (_isScanning) return;
     if (!await _checkBlePermissions()) {
@@ -115,23 +90,15 @@ class BrainBitController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /* -------------------------------------------------- */
-  /* Connessione & Stream EEG                           */
-  /* -------------------------------------------------- */
   Future<void> _connect(bb.FSensorInfo info) async {
     if (_isConnected) return;
-
-    // arresta scan per liberare BLE
     await _stopScan();
 
-    // crea sensore
     _sensor = await _scanner.createSensor(info) as bb.BrainBit;
     await _sensor!.execute(bb.FSensorCommand.startSignal);
 
-    // setup Emotions
     _initEmotions();
 
-    // ascolta stream EEG
     _sigSub = _sensor!.signalDataStream.listen(_onEegPacket);
 
     _isConnected = true;
@@ -151,18 +118,15 @@ class BrainBitController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /* -------------------------------------------------- */
-  /* Emotions setup                                     */
-  /* -------------------------------------------------- */
   void _initEmotions() {
-    if (_emo != null) return; // già creato
+    if (_emo != null) return;
 
-    const sr = 250; // BrainBit sample‑rate Hz
+    const sr = 250;
 
     final mathSettings = em.MathLibSettings(
       samplingRate: sr,
-      fftWindow: 1000,          // 1 s
-      processWinFreq: 25,       // 25 Hz update
+      fftWindow: 1000,
+      processWinFreq: 25,
       nFirstSecSkipped: 4,
       bipolarMode: true,
     );
@@ -177,17 +141,17 @@ class BrainBitController extends ChangeNotifier {
       ),
     );
 
+    emo.setCalibrationLength(6);
+    emo.setZeroSpectWaves(true, 0, 1, 1, 1, 0);
+    emo.setSpectNormalizationByBandsWidth(true);
     emo.startCalibration();
+
     _emo = emo;
   }
 
-  /* -------------------------------------------------- */
-  /* Gestione pacchetti EEG                             */
-  /* -------------------------------------------------- */
   void _onEegPacket(List<bb.BrainBitSignalData> packet) {
     if (_emo == null || packet.isEmpty) return;
 
-    // Converte ogni BrainBitSignalData in RawChanel (left/right bipolare)
     final samples = packet
         .map((s) => em.RawChanel(
       leftBipolar: s.t3 - s.o1,
@@ -197,26 +161,28 @@ class BrainBitController extends ChangeNotifier {
 
     _emo!.pushBipolars(samples);
     _emo!.processData();
-    _emo!.processData();
 
-    // calibrazione finita?
     if (!_calibrated && _emo!.isCalibrationFinished()) {
       _calibrated = true;
     }
 
-    // leggi dati mentali
+    if (!_emo!.isCalibrationFinished()) return;
+
     final md = _emo!.readMentalData();
     if (md.isNotEmpty) {
       final last = md.last;
-      _attention = (last.instAttention   * 100).clamp(0, 100);
-      _relax     = (last.instRelaxation * 100).clamp(0, 100);
+      _attention = (last.relAttention * 100).clamp(0, 100);
+      _relax = (last.relRelaxation * 100).clamp(0, 100);
       notifyListeners();
     }
   }
 
-  /* -------------------------------------------------- */
-  /* Dispose                                           */
-  /* -------------------------------------------------- */
+  void restartCalibration() {
+    _emo?.startCalibration();
+    _calibrated = false;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _sigSub?.cancel();
@@ -224,6 +190,9 @@ class BrainBitController extends ChangeNotifier {
 
     _sensor?.dispose();
     if (_scannerCreated) _scanner.stop();
+
+    _emo?.dispose();
+    _emo = null;
 
     super.dispose();
   }
