@@ -2,11 +2,30 @@
 
 import 'package:flutter/material.dart';
 import 'heart_monitor_controller.dart';
+import '../../screens/setup_screen.dart'; // Importa GlobalSettings
 
 class HeartMonitorWidget extends StatelessWidget {
   final HeartMonitorController controller;
 
   const HeartMonitorWidget({super.key, required this.controller});
+
+  // Funzione per mappare il nome del colore a un oggetto Color
+  Color _getOverlayColor() {
+    switch (GlobalSettings.overlayColor.toLowerCase()) {
+      case 'white':
+        return Colors.white;
+      case 'yellow':
+        return Colors.yellow;
+      case 'red':
+        return Colors.red;
+      case 'green':
+        return Colors.green;
+      case 'blue':
+        return Colors.blue;
+      default:
+        return Colors.white;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,11 +42,11 @@ class HeartMonitorWidget extends StatelessWidget {
               children: [
                 Text(
                   'BPM',
-                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                  style: TextStyle(fontSize: 14, color: _getOverlayColor()),
                 ),
                 Text(
                   '${controller.bpm}',
-                  style: const TextStyle(fontSize: 24, color: Colors.white),
+                  style: TextStyle(fontSize: 24, color: _getOverlayColor()),
                 ),
               ],
             ),

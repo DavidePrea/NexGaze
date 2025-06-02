@@ -1,4 +1,3 @@
-// modes/running_mode.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -8,12 +7,15 @@ import 'package:http/http.dart' as http;
 import 'package:pedometer/pedometer.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_tts/flutter_tts.dart'; // Aggiunto per TTS
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
 import '../widgets/heart_monitor/heart_monitor_controller.dart';
 import '../widgets/heart_monitor/heart_monitor_widget.dart';
+import '../screens/setup_screen.dart'; // Aggiornato il percorso per accedere a GlobalSettings
+import '../screens/menu_screen.dart'; // Importa per la navigazione verso MenuScreen
 
 class Mode2Screen extends StatefulWidget {
   const Mode2Screen({super.key});
@@ -26,7 +28,6 @@ class _Mode2ScreenState extends State<Mode2Screen> {
   LatLng? _currentPosition;
   LatLng? _lastPosition;
   double _totalDistance = 0.0;
-  double? _bearing;
   double? _magneticDirection;
   double? _speed;
   DateTime? _lastTime;
@@ -36,6 +37,9 @@ class _Mode2ScreenState extends State<Mode2Screen> {
   final Distance _distance = const Distance();
 
   Stream<StepCount>? _stepCountStream;
+  StreamSubscription<StepCount>? _stepCountSubscription; // Aggiunto per gestire la cancellazione
+  StreamSubscription<CompassEvent>? _compassSubscription; // Aggiunto per gestire la cancellazione
+  StreamSubscription<Position>? _positionSubscription; // Aggiunto per gestire la cancellazione
   int _initialSteps = 0;
   int _steps = 0;
 
@@ -47,9 +51,13 @@ class _Mode2ScreenState extends State<Mode2Screen> {
   Timer? _chronoTimer;
   Duration _chronoDuration = Duration.zero;
   bool _isChronoRunning = false;
+  bool _hasSpokenOneMinute = false; // Per evitare di ripetere il messaggio
 
   // MethodChannel per i tasti del telecomando
   static const platform = MethodChannel('com.example.app/keyevents');
+
+  // Sintetizzatore vocale
+  final FlutterTts _tts = FlutterTts();
 
   @override
   void initState() {
@@ -65,15 +73,27 @@ class _Mode2ScreenState extends State<Mode2Screen> {
 
     _requestPermissions();
     _determinePosition();
-    FlutterCompass.events?.listen((event) {
-      setState(() => _magneticDirection = event.heading);
+    _compassSubscription = FlutterCompass.events?.listen((event) {
+      if (mounted) {
+        setState(() => _magneticDirection = event.heading);
+      }
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() => _currentTime = DateFormat.Hm().format(DateTime.now()));
+      if (mounted) {
+        setState(() => _currentTime = DateFormat.Hm().format(DateTime.now()));
+      }
     });
 
     // Inizializza il listener per i tasti del telecomando
     _listenForKeyEvents();
+
+    // Inizializza il TTS
+    _initTts();
+  }
+
+  Future<void> _initTts() async {
+    await _tts.setLanguage('en-US');
+    await _tts.setPitch(1.0);
   }
 
   @override
@@ -85,6 +105,10 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     _heartController.stopMonitoring();
     _timer.cancel();
     _chronoTimer?.cancel();
+    _stepCountSubscription?.cancel(); // Cancella il listener dei passi
+    _compassSubscription?.cancel(); // Cancella il listener della bussola
+    _positionSubscription?.cancel(); // Cancella il listener della posizione
+    _tts.stop();
     super.dispose();
   }
 
@@ -101,9 +125,19 @@ class _Mode2ScreenState extends State<Mode2Screen> {
   }
 
   void _handleKeyDown(int keyCode) {
+    if (!mounted) return; // Evita chiamate se il widget non è montato
     setState(() {
       switch (keyCode) {
-        case 24: // KEYCODE_VOLUME_UP (Tasto Su)
+        case 24: // KEYCODE_DPAD_UP
+        // Resetta CHRONO, DIST e STEPS
+          _chronoTimer?.cancel();
+          _isChronoRunning = false;
+          _chronoDuration = Duration.zero;
+          _hasSpokenOneMinute = false; // Resetta il flag per il messaggio vocale
+          _totalDistance = 0.0;
+          _steps = 0;
+          break;
+        case 25: // KEYCODE_DPAD_DOWN
           if (_isChronoRunning) {
             // Ferma il cronometro
             _chronoTimer?.cancel();
@@ -111,9 +145,18 @@ class _Mode2ScreenState extends State<Mode2Screen> {
           } else {
             // Avvia il cronometro
             _chronoTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-              setState(() {
-                _chronoDuration = _chronoDuration + const Duration(seconds: 1);
-              });
+              if (mounted) {
+                setState(() {
+                  _chronoDuration = _chronoDuration + const Duration(seconds: 1);
+                  // Controlla se il cronometro raggiunge 60 secondi
+                  if (_chronoDuration.inSeconds == 60 && !_hasSpokenOneMinute) {
+                    if (GlobalSettings.voiceNotificationsEnabled) {
+                      _tts.speak("One minute");
+                    }
+                    _hasSpokenOneMinute = true;
+                  }
+                });
+              }
             });
             _isChronoRunning = true;
           }
@@ -123,6 +166,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
   }
 
   void _handleKeyUp(int keyCode) {
+    if (!mounted) return; // Evita chiamate se il widget non è montato
     setState(() {
       switch (keyCode) {
         case 66: // KEYCODE_ENTER (Tasto Centrale)
@@ -130,6 +174,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
           _chronoTimer?.cancel();
           _isChronoRunning = false;
           _chronoDuration = Duration.zero;
+          _hasSpokenOneMinute = false; // Resetta il flag per il messaggio vocale
           break;
       }
     });
@@ -147,7 +192,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     final status = await Permission.activityRecognition.request();
     if (status.isGranted) {
       _stepCountStream = Pedometer.stepCountStream;
-      _stepCountStream?.listen(_onStepCount);
+      _stepCountSubscription = _stepCountStream?.listen(_onStepCount);
     }
   }
 
@@ -155,7 +200,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     if (_initialSteps == 0 && event.steps > 0) {
       _initialSteps = event.steps;
     }
-    if (_initialSteps > 0) {
+    if (_initialSteps > 0 && mounted) {
       setState(() => _steps = event.steps - _initialSteps);
     }
   }
@@ -166,7 +211,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     );
     try {
       final response = await http.get(url);
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && mounted) {
         final data = json.decode(response.body);
         setState(() {
           _temperature = "${data['current']['temp_c']} °C";
@@ -188,7 +233,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
           permission != LocationPermission.whileInUse) return;
     }
 
-    Geolocator.getPositionStream(
+    _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 1,
@@ -201,12 +246,6 @@ class _Mode2ScreenState extends State<Mode2Screen> {
         final duration = now.difference(_lastTime!).inSeconds;
         if (segment >= 3.0 && duration > 0) {
           _totalDistance += segment;
-          _bearing = Geolocator.bearingBetween(
-            _lastPosition!.latitude,
-            _lastPosition!.longitude,
-            newLatLng.latitude,
-            newLatLng.longitude,
-          );
           _speed = (segment / duration) * 3.6;
           _lastPosition = newLatLng;
           _lastTime = now;
@@ -216,44 +255,68 @@ class _Mode2ScreenState extends State<Mode2Screen> {
         _lastTime = now;
       }
 
-      setState(() {
-        _currentPosition = newLatLng;
-      });
+      if (mounted) {
+        setState(() {
+          _currentPosition = newLatLng;
+        });
+      }
 
       _fetchWeather(position.latitude, position.longitude);
     });
   }
 
-  String _getDirectionLabel(double? bearing) {
-    if (bearing == null) return '--';
+  String _getDirectionLabel(double? direction) {
+    if (direction == null) return '--';
     final directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-    final index = ((bearing + 22.5) % 360 ~/ 45).toInt();
+    final index = ((direction + 22.5) % 360 ~/ 45).toInt();
     return directions[index];
   }
 
+  // Funzione per mappare il nome del colore a un oggetto Color
+  Color _getOverlayColor() {
+    switch (GlobalSettings.overlayColor.toLowerCase()) {
+      case 'white':
+        return Colors.white;
+      case 'yellow':
+        return Colors.yellow;
+      case 'red':
+        return Colors.red;
+      case 'green':
+        return Colors.green;
+      case 'blue':
+        return Colors.blue;
+      default:
+        return Colors.white;
+    }
+  }
+
   Widget _buildDirectionIndicator() {
-    final double? direction =
-    (_bearing != null && _currentPosition != null) ? _bearing : _magneticDirection;
+    final double? direction = _magneticDirection;
     if (direction == null) {
-      return const Text(
-        '--',
-        style: TextStyle(color: Colors.white, fontSize: 14),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Image.asset('assets/icons/compass_arrow.png', width: 48),
+          Text(
+            '--',
+            style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+          ),
+        ],
       );
     }
-    // Se stiamo usando _magneticDirection (bussola magnetica), inverti l'angolo
-    final bool isUsingMagnetic = _bearing == null || _currentPosition == null;
-    final angle = (isUsingMagnetic ? -direction : direction) * (math.pi / 180);
+    // Usa sempre la direzione magnetica, quindi inverti l'angolo
+    final angle = -direction * (math.pi / 180);
     final label = _getDirectionLabel(direction);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Transform.rotate(
           angle: angle,
           child: Image.asset('assets/icons/compass_arrow.png', width: 48),
         ),
-        const SizedBox(height: 4),
         Text(
           '${direction.toStringAsFixed(0)}° $label',
-          style: const TextStyle(color: Colors.white, fontSize: 14),
+          style: TextStyle(color: _getOverlayColor(), fontSize: 14),
         ),
       ],
     );
@@ -266,59 +329,102 @@ class _Mode2ScreenState extends State<Mode2Screen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'TIME',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 14),
             ),
             const SizedBox(width: 8),
             Text(
               _currentTime,
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 24),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'DIST',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'DIST',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              '${_totalDistance.toStringAsFixed(1)} m',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _totalDistance.toStringAsFixed(1),
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'm',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'SPEED',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SPEED',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              _speed != null ? '${_speed!.toStringAsFixed(1)} km/h' : '--',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _speed != null ? _speed!.toStringAsFixed(1) : '--',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'km/h',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'STEPS',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'STEPS',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              '$_steps',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '$_steps',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+              ],
             ),
           ],
         ),
@@ -337,14 +443,14 @@ class _Mode2ScreenState extends State<Mode2Screen> {
             mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'TEMP',
-                style: TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(color: _getOverlayColor(), fontSize: 14),
               ),
               const SizedBox(width: 8),
               Text(
                 "$_temperature",
-                style: const TextStyle(color: Colors.white, fontSize: 24),
+                style: TextStyle(color: _getOverlayColor(), fontSize: 24),
               ),
             ],
           ),
@@ -368,13 +474,13 @@ class _Mode2ScreenState extends State<Mode2Screen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text(
+                Text(
                   'CRONO',
-                  style: TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
                 ),
                 Text(
                   _formatDuration(_chronoDuration),
-                  style: const TextStyle(color: Colors.white, fontSize: 24),
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
                 ),
               ],
             ),
@@ -392,7 +498,17 @@ class _Mode2ScreenState extends State<Mode2Screen> {
           Positioned(
             bottom: 16,
             left: 16,
-            child: Image.asset('assets/icons/running.png', height: 50),
+            child: GestureDetector(
+              onTap: GlobalSettings.tapIconsToExit
+                  ? () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MenuScreen()),
+                );
+              }
+                  : null, // Nessuna azione se tapIconsToExit è false
+              child: Image.asset('assets/icons/running.png', height: 50),
+            ),
           ),
         ],
       ),

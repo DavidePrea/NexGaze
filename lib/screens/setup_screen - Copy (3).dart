@@ -8,8 +8,6 @@ class GlobalSettings {
   static String overlayColor = 'White';
   static String language = 'English'; // Variabile globale per la lingua
   static bool tapIconsToExit = true; // Variabile globale per tap icons to exit
-  static int? age; // Variabile globale per l'età
-  static String? gender; // Variabile globale per il genere
 }
 
 class SetupScreen extends StatefulWidget {
@@ -31,9 +29,6 @@ class _SetupScreenState extends State<SetupScreen> {
   final List<String> _availableLanguages = ['Deutsch', 'Français', 'English', 'Español', 'Italiano'];
   final List<String> _buddyNames = ['Alice', 'Bob', 'Charlie'];
 
-  late int? _age; // Variabile locale per l'età
-  late String? _gender; // Variabile locale per il genere
-
   @override
   void initState() {
     super.initState();
@@ -42,8 +37,6 @@ class _SetupScreenState extends State<SetupScreen> {
     _overlayColor = GlobalSettings.overlayColor;
     _language = GlobalSettings.language; // Inizializza la lingua
     _tapIconsToExit = GlobalSettings.tapIconsToExit; // Inizializza tap icons to exit
-    _age = GlobalSettings.age; // Inizializza l'età
-    _gender = GlobalSettings.gender; // Inizializza il genere
   }
 
   void _showBuddies() {
@@ -190,73 +183,6 @@ class _SetupScreenState extends State<SetupScreen> {
                         });
                       },
                       activeColor: Colors.red,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Age
-                Row(
-                  children: [
-                    const Text(
-                      'Age',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        style: const TextStyle(color: Colors.white),
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          hintText: 'Enter age',
-                          hintStyle: TextStyle(color: Colors.grey),
-                          enabledBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white),
-                          ),
-                          focusedBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white),
-                          ),
-                        ),
-                        onChanged: (value) {
-                          setState(() {
-                            _age = int.tryParse(value); // Converte la stringa in int, null se non valido
-                            GlobalSettings.age = _age; // Aggiorna lo stato globale
-                          });
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Gender
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Gender',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                    DropdownButton<String>(
-                      value: _gender,
-                      dropdownColor: Colors.grey[800],
-                      style: const TextStyle(fontSize: 16, color: Colors.white),
-                      items: const [
-                        DropdownMenuItem<String>(
-                          value: 'F',
-                          child: Text('F'),
-                        ),
-                        DropdownMenuItem<String>(
-                          value: 'M',
-                          child: Text('M'),
-                        ),
-                      ],
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _gender = newValue;
-                          GlobalSettings.gender = newValue; // Aggiorna lo stato globale
-                        });
-                      },
                     ),
                   ],
                 ),

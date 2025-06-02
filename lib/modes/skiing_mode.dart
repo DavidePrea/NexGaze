@@ -4,7 +4,12 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:async';
+
+import '../screens/setup_screen.dart'; // Importa per accedere a GlobalSettings
+import '../screens/menu_screen.dart'; // Importa per la navigazione verso MenuScreen
 
 class Mode4Screen extends StatefulWidget {
   const Mode4Screen({super.key});
@@ -19,10 +24,23 @@ class _Mode4ScreenState extends State<Mode4Screen> {
   double? _altitude;
   double _totalDistance = 0.0;
   double? _speed;
+  double? _maxSpeed = 0.0; // Variabile per la velocità massima
   DateTime? _lastTime;
   String _currentTime = DateFormat.Hm().format(DateTime.now()); // Solo ore e minuti
   StreamSubscription<Position>? _positionStream;
   late Timer _clockTimer;
+
+  // Variabili per il ciclo della mappa
+  bool _isMapVisible = true; // Controlla se la mappa è visibile
+  bool _isMapInverted = true; // Controlla se la mappa ha i colori invertiti
+  int _cycleStep = 0; // Traccia il passo del ciclo (0: invertito, 1: nascosto, 2: normale, 3: nascosto, 4: invertito)
+
+  // Variabili per i dati meteo
+  String? _temperature;
+  String? _weatherTrend;
+
+  // MethodChannel per i tasti del telecomando
+  static const platform = MethodChannel('com.example.app/keyevents');
 
   final LatLng center = LatLng(46.83688531474294, 9.214954371888968);
 
@@ -37,10 +55,15 @@ class _Mode4ScreenState extends State<Mode4Screen> {
 
     _startLocationUpdates();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        _currentTime = DateFormat.Hm().format(DateTime.now());
-      });
+      if (mounted) {
+        setState(() {
+          _currentTime = DateFormat.Hm().format(DateTime.now());
+        });
+      }
     });
+
+    // Inizializza il listener per i tasti del telecomando
+    _listenForKeyEvents();
   }
 
   @override
@@ -55,6 +78,54 @@ class _Mode4ScreenState extends State<Mode4Screen> {
     _positionStream?.cancel();
     _clockTimer.cancel();
     super.dispose();
+  }
+
+  void _listenForKeyEvents() {
+    platform.setMethodCallHandler((call) async {
+      if (call.method == "keyDown") {
+        int keyCode = call.arguments;
+        _handleKeyDown(keyCode);
+      }
+    });
+  }
+
+  void _handleKeyDown(int keyCode) {
+    if (!mounted) return; // Evita chiamate se il widget non è montato
+    setState(() {
+      switch (keyCode) {
+        case 25: // KEYCODE_VOLUME_DOWN - Ciclo mappa e reset contatori
+          _cycleStep = (_cycleStep + 1) % 5; // Ciclo: 0 -> 1 -> 2 -> 3 -> 4 -> 0
+          switch (_cycleStep) {
+            case 0: // Mappa visibile, colori invertiti
+              _isMapVisible = true;
+              _isMapInverted = true;
+              break;
+            case 1: // Mappa nascosta
+              _isMapVisible = false;
+              _isMapInverted = true; // Stato precedente non rilevante
+              break;
+            case 2: // Mappa visibile, colori normali
+              _isMapVisible = true;
+              _isMapInverted = false;
+              break;
+            case 3: // Mappa nascosta
+              _isMapVisible = false;
+              _isMapInverted = false; // Stato precedente non rilevante
+              break;
+            case 4: // Mappa visibile, colori invertiti (riparte il ciclo)
+              _isMapVisible = true;
+              _isMapInverted = true;
+              break;
+          }
+          // Reset dei contatori
+          _totalDistance = 0.0;
+          _maxSpeed = 0.0;
+          break;
+        case 66: // Tasto centrale (KeyUp, code=66) - Nessuna azione
+        // Nessuna azione associata
+          break;
+      }
+    });
   }
 
   void _startLocationUpdates() async {
@@ -91,6 +162,10 @@ class _Mode4ScreenState extends State<Mode4Screen> {
       if (distanceMoved >= 3.0 && duration > 0) {
         _totalDistance += distanceMoved;
         _speed = (distanceMoved / duration) * 3.6; // Converti in km/h
+        // Aggiorna la velocità massima
+        if (_speed != null && (_maxSpeed == null || _speed! > _maxSpeed!)) {
+          _maxSpeed = _speed;
+        }
         _lastPosition = newLatLng;
         _lastTime = now;
       } else if (_lastPosition == null || _lastTime == null) {
@@ -98,11 +173,34 @@ class _Mode4ScreenState extends State<Mode4Screen> {
         _lastTime = now;
       }
 
-      setState(() {
-        _currentPosition = newLatLng;
-        _altitude = position.altitude;
-      });
+      if (mounted) {
+        setState(() {
+          _currentPosition = newLatLng;
+          _altitude = position.altitude;
+        });
+      }
+
+      // Aggiorna i dati meteo
+      _fetchWeather(position.latitude, position.longitude);
     });
+  }
+
+  // Funzione per mappare il nome del colore a un oggetto Color
+  Color _getOverlayColor() {
+    switch (GlobalSettings.overlayColor.toLowerCase()) {
+      case 'white':
+        return Colors.white;
+      case 'yellow':
+        return Colors.yellow;
+      case 'red':
+        return Colors.red;
+      case 'green':
+        return Colors.green;
+      case 'blue':
+        return Colors.blue;
+      default:
+        return Colors.white;
+    }
   }
 
   Widget _buildInfoColumn() {
@@ -112,64 +210,230 @@ class _Mode4ScreenState extends State<Mode4Screen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'TIME',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 14),
             ),
             const SizedBox(width: 8),
             Text(
               _currentTime,
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 24),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'ALT',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ALT',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              _altitude != null ? '${_altitude!.toStringAsFixed(1)} m' : '--',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _altitude != null ? _altitude!.toStringAsFixed(1) : '--',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'm',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'DIST',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'DIST',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              '${_totalDistance.toStringAsFixed(1)} m',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _totalDistance.toStringAsFixed(1),
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'm',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'SPEED',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SPEED',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              _speed != null ? '${_speed!.toStringAsFixed(1)} km/h' : '--',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _speed != null ? _speed!.toStringAsFixed(1) : '--',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'km/h',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MAX',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _maxSpeed != null ? _maxSpeed!.toStringAsFixed(1) : '--',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'km/h',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+              ],
             ),
           ],
         ),
       ],
     );
+  }
+
+  Widget _buildRightInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (_temperature != null)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'TEMP',
+                style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                "$_temperature",
+                style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+              ),
+            ],
+          ),
+        const SizedBox(height: 16),
+        if (_weatherTrend != null)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                'NEXT 6H',
+                style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+              ),
+              const SizedBox(width: 8),
+              _buildWeatherIcon() ?? Container(),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget? _buildWeatherIcon() {
+    switch (_weatherTrend) {
+      case 'improving':
+        return Image.asset('assets/icons/sun.png', width: 32, height: 32);
+      case 'worsening':
+        return Image.asset('assets/icons/rain.png', width: 32, height: 32);
+      case 'stable':
+        return Image.asset('assets/icons/cloud.png', width: 32, height: 32);
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _fetchWeather(double lat, double lon) async {
+    final url = Uri.parse(
+      'https://api.weatherapi.com/v1/forecast.json?key=000556fcf5894a2e90c93523252205&q=$lat,$lon&hours=4',
+    );
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200 && mounted) {
+        final data = json.decode(response.body);
+        setState(() {
+          _temperature = "${data['current']['temp_c']} °C";
+          final codes = (data['forecast']['forecastday'][0]['hour'] as List)
+              .take(4)
+              .map((h) => h['condition']['code'] as int)
+              .toList();
+          int severity(int c) => c == 1000
+              ? 1
+              : c >= 1003 && c <= 1006
+              ? 2
+              : c >= 1063 && c <= 1195
+              ? 3
+              : c >= 1210 && c <= 1225
+              ? 4
+              : 5;
+          final severities = codes.map(severity).toList();
+          _weatherTrend = severities[0] > severities.last
+              ? 'improving'
+              : severities[0] < severities.last
+              ? 'worsening'
+              : 'stable';
+        });
+      }
+    } catch (e) {
+      debugPrint('Weather error: $e');
+    }
   }
 
   @override
@@ -181,7 +445,7 @@ class _Mode4ScreenState extends State<Mode4Screen> {
           Row(
             children: [
               Expanded(
-                flex: 2,
+                flex: _isMapVisible ? 2 : 1, // Se la mappa è nascosta, riduci lo spazio a sinistra
                 child: Stack(
                   children: [
                     Positioned(
@@ -189,29 +453,149 @@ class _Mode4ScreenState extends State<Mode4Screen> {
                       left: 16,
                       child: _buildInfoColumn(),
                     ),
+                    if (_isMapVisible) // Mostra _buildRightInfo a destra della sezione sinistra solo se la mappa è visibile
+                      Positioned(
+                        top: 16,
+                        right: 16,
+                        child: _buildRightInfo(),
+                      ),
                     Positioned(
                       bottom: 10,
                       left: 10,
-                      child: Image.asset(
-                        'assets/icons/skiing.png',
-                        height: 40,
+                      child: GestureDetector(
+                        onTap: GlobalSettings.tapIconsToExit
+                            ? () {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (context) => const MenuScreen()),
+                          );
+                        }
+                            : null, // Nessuna azione se tapIconsToExit è false
+                        child: Image.asset(
+                          'assets/icons/skiing.png',
+                          height: 40,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
               Expanded(
-                flex: 1,
-                child: FlutterMap(
-                  options: MapOptions(
-                    initialCenter: center,
-                    initialZoom: 13.0,
-                  ),
+                flex: _isMapVisible ? 1 : 2, // Se la mappa è nascosta, espandi lo spazio a destra
+                child: _isMapVisible
+                    ? Stack(
                   children: [
-                    TileLayer(
-                      urlTemplate:
-                      'https://tiles.opensnowmap.org/pistes/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.example.miaapp', // personalizza
+                    _isMapInverted
+                        ? ColorFiltered(
+                      colorFilter: const ColorFilter.matrix([
+                        -1, 0, 0, 0, 255, // R
+                        0, -1, 0, 0, 255, // G
+                        0, 0, -1, 0, 255, // B
+                        0, 0, 0, 1, 0,    // A
+                      ]),
+                      child: FlutterMap(
+                        options: MapOptions(
+                          initialCenter: center,
+                          initialZoom: 13.0,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate:
+                            'https://tiles.opensnowmap.org/pistes/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.example.miaapp',
+                          ),
+                        ],
+                      ),
+                    )
+                        : FlutterMap(
+                      options: MapOptions(
+                        initialCenter: center,
+                        initialZoom: 13.0,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                          'https://tiles.opensnowmap.org/pistes/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.example.miaapp',
+                        ),
+                      ],
+                    ),
+                    // Sfumatura lato sinistro
+                    Positioned(
+                      top: 0,
+                      bottom: 0,
+                      left: 0,
+                      width: 30,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [Colors.black, Colors.transparent],
+                            stops: [0.0, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Sfumatura lato destro
+                    Positioned(
+                      top: 0,
+                      bottom: 0,
+                      right: 0,
+                      width: 30,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [Colors.transparent, Colors.black],
+                            stops: [0.0, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Sfumatura lato superiore
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: 30,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.black, Colors.transparent],
+                            stops: [0.0, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Sfumatura lato inferiore
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: 30,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Colors.black],
+                            stops: [0.0, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+                    : Stack(
+                  children: [
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: _buildRightInfo(), // Sposta a destra quando la mappa è nascosta
                     ),
                   ],
                 ),

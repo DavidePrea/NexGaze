@@ -1,4 +1,3 @@
-// hiking_mode.dart completo con aggiunta calcolo e visualizzazione velocità
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,6 +14,8 @@ import 'dart:math' as math;
 
 import '../widgets/heart_monitor/heart_monitor_controller.dart';
 import '../widgets/heart_monitor/heart_monitor_widget.dart';
+import '../screens/setup_screen.dart'; // Importa per accedere a GlobalSettings
+import '../screens/menu_screen.dart'; // Importa per la navigazione verso MenuScreen
 
 class Mode1Screen extends StatefulWidget {
   const Mode1Screen({super.key});
@@ -39,6 +40,9 @@ class _Mode1ScreenState extends State<Mode1Screen> {
   final Distance _distance = const Distance();
 
   Stream<StepCount>? _stepCountStream;
+  StreamSubscription<StepCount>? _stepCountSubscription; // Aggiunto per gestire la cancellazione
+  StreamSubscription<CompassEvent>? _compassSubscription; // Aggiunto per gestire la cancellazione
+  StreamSubscription<Position>? _positionSubscription; // Aggiunto per gestire la cancellazione
   int _initialSteps = 0;
   int _steps = 0;
 
@@ -46,6 +50,16 @@ class _Mode1ScreenState extends State<Mode1Screen> {
   String? _weatherTrend;
 
   late HeartMonitorController _heartController;
+
+  // Variabile per controllare la visibilità della mappa
+  bool _isMapVisible = true; // Inizialmente visibile (ON)
+
+  // Timer per l'auto-centramento della mappa
+  Timer? _autoCenterTimer;
+  double _currentZoom = 17.0; // Livello di zoom corrente
+
+  // MethodChannel per i tasti del telecomando
+  static const platform = MethodChannel('com.example.app/keyevents');
 
   @override
   void initState() {
@@ -61,11 +75,25 @@ class _Mode1ScreenState extends State<Mode1Screen> {
 
     _requestPermissions();
     _determinePosition();
-    FlutterCompass.events?.listen((event) {
-      setState(() => _magneticDirection = event.heading);
+    _compassSubscription = FlutterCompass.events?.listen((event) {
+      if (mounted) {
+        setState(() => _magneticDirection = event.heading);
+      }
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() => _currentTime = DateFormat.Hm().format(DateTime.now()));
+      if (mounted) {
+        setState(() => _currentTime = DateFormat.Hm().format(DateTime.now()));
+      }
+    });
+
+    // Inizializza il listener per i tasti del telecomando
+    _listenForKeyEvents();
+
+    // Auto-centramento iniziale dopo un breve ritardo per garantire che la posizione sia disponibile
+    Future.delayed(const Duration(seconds: 1), () {
+      if (_currentPosition != null && mounted) {
+        _mapController.move(_currentPosition!, _currentZoom);
+      }
     });
   }
 
@@ -77,14 +105,42 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     ]);
     _heartController.stopMonitoring();
     _timer.cancel();
+    _stepCountSubscription?.cancel(); // Cancella il listener dei passi
+    _compassSubscription?.cancel(); // Cancella il listener della bussola
+    _positionSubscription?.cancel(); // Cancella il listener della posizione
+    _autoCenterTimer?.cancel();
     super.dispose();
+  }
+
+  void _listenForKeyEvents() {
+    platform.setMethodCallHandler((call) async {
+      if (call.method == "keyDown") {
+        int keyCode = call.arguments;
+        _handleKeyDown(keyCode);
+      }
+    });
+  }
+
+  void _handleKeyDown(int keyCode) {
+    if (!mounted) return; // Evita chiamate se il widget non è montato
+    setState(() {
+      switch (keyCode) {
+        case 25: // KEYCODE_VOLUME_DOWN
+          _isMapVisible = !_isMapVisible; // Alterna tra ON e OFF
+          break;
+        case 24: // KEYCODE_DPAD_UP
+          _totalDistance = 0.0; // Resetta DIST
+          _steps = 0; // Resetta STEPS
+          break;
+      }
+    });
   }
 
   Future<void> _requestPermissions() async {
     final status = await Permission.activityRecognition.request();
     if (status.isGranted) {
       _stepCountStream = Pedometer.stepCountStream;
-      _stepCountStream?.listen(_onStepCount);
+      _stepCountSubscription = _stepCountStream?.listen(_onStepCount);
     }
   }
 
@@ -92,7 +148,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     if (_initialSteps == 0 && event.steps > 0) {
       _initialSteps = event.steps;
     }
-    if (_initialSteps > 0) {
+    if (_initialSteps > 0 && mounted) {
       setState(() => _steps = event.steps - _initialSteps);
     }
   }
@@ -103,7 +159,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     );
     try {
       final response = await http.get(url);
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && mounted) {
         final data = json.decode(response.body);
         setState(() {
           _temperature = "${data['current']['temp_c']} °C";
@@ -144,7 +200,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
           permission != LocationPermission.whileInUse) return;
     }
 
-    Geolocator.getPositionStream(
+    _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 1,
@@ -172,49 +228,71 @@ class _Mode1ScreenState extends State<Mode1Screen> {
         _lastTime = now;
       }
 
-      setState(() {
-        _currentPosition = newLatLng;
-        _altitude = position.altitude;
-        // Centra la mappa sulla nuova posizione con zoom corrente
-        if (_currentPosition != null) {
-          _mapController.move(_currentPosition!, 17.0); // Usa uno zoom fisso (17) per semplicità
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _currentPosition = newLatLng;
+          _altitude = position.altitude;
+          // Aggiorna il livello di zoom corrente
+          _currentZoom = _mapController.camera.zoom;
+        });
+      }
 
       _fetchWeather(position.latitude, position.longitude);
     });
   }
 
-  String _getDirectionLabel(double? bearing) {
-    if (bearing == null) return '--';
+  String _getDirectionLabel(double? direction) {
+    if (direction == null) return '--';
     final directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-    final index = ((bearing + 22.5) % 360 ~/ 45).toInt();
+    final index = ((direction + 22.5) % 360 ~/ 45).toInt();
     return directions[index];
   }
 
+  // Funzione per mappare il nome del colore a un oggetto Color
+  Color _getOverlayColor() {
+    switch (GlobalSettings.overlayColor.toLowerCase()) {
+      case 'white':
+        return Colors.white;
+      case 'yellow':
+        return Colors.yellow;
+      case 'red':
+        return Colors.red;
+      case 'green':
+        return Colors.green;
+      case 'blue':
+        return Colors.blue;
+      default:
+        return Colors.white;
+    }
+  }
+
   Widget _buildDirectionIndicator() {
-    final double? direction =
-    (_bearing != null && _currentPosition != null) ? _bearing : _magneticDirection;
+    final double? direction = _magneticDirection; // Usa solo il sensore di magnetismo
     if (direction == null) {
-      return const Text(
-        '--',
-        style: TextStyle(color: Colors.white, fontSize: 14),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Image.asset('assets/icons/compass_arrow.png', width: 48),
+          Text(
+            '--',
+            style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+          ),
+        ],
       );
     }
-    // Se stiamo usando _magneticDirection (bussola magnetica), inverti l'angolo
-    final bool isUsingMagnetic = _bearing == null || _currentPosition == null;
-    final angle = (isUsingMagnetic ? -direction : direction) * (math.pi / 180);
+    // Usa sempre la direzione magnetica, quindi inverti l'angolo
+    final angle = -direction * (math.pi / 180);
     final label = _getDirectionLabel(direction);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Transform.rotate(
           angle: angle,
           child: Image.asset('assets/icons/compass_arrow.png', width: 48),
         ),
-        const SizedBox(height: 4),
         Text(
           '${direction.toStringAsFixed(0)}° $label',
-          style: const TextStyle(color: Colors.white, fontSize: 14),
+          style: TextStyle(color: _getOverlayColor(), fontSize: 14),
         ),
       ],
     );
@@ -240,59 +318,84 @@ class _Mode1ScreenState extends State<Mode1Screen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'TIME',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 14),
             ),
             const SizedBox(width: 8),
             Text(
               _currentTime,
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 24),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'DIST',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 14),
             ),
-            const SizedBox(width: 8),
-            Text(
-              '${_totalDistance.toStringAsFixed(1)} m',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _totalDistance.toStringAsFixed(1),
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'm',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'SPEED',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 14),
             ),
-            const SizedBox(width: 8),
-            Text(
-              _speed != null ? '${_speed!.toStringAsFixed(1)} km/h' : '--',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _speed != null ? _speed!.toStringAsFixed(1) : '--',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'km/h',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'STEPS',
-              style: TextStyle(color: Colors.white, fontSize: 14),
-            ),
-            const SizedBox(width: 8),
             Text(
-              '$_steps',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+              'STEPS',
+              style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+            ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '$_steps',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+              ],
             ),
           ],
         ),
@@ -310,14 +413,24 @@ class _Mode1ScreenState extends State<Mode1Screen> {
           mainAxisAlignment: MainAxisAlignment.end,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'ALT',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: _getOverlayColor(), fontSize: 14),
             ),
             const SizedBox(width: 8),
-            Text(
-              _altitude != null ? '${_altitude!.toStringAsFixed(1)} m' : '--',
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _altitude != null ? '${_altitude!.toStringAsFixed(1)}' : '--',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 24),
+                ),
+                Text(
+                  'm',
+                  style: TextStyle(color: _getOverlayColor(), fontSize: 14),
+                  textAlign: TextAlign.end,
+                ),
+              ],
             ),
           ],
         ),
@@ -327,14 +440,14 @@ class _Mode1ScreenState extends State<Mode1Screen> {
             mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'TEMP',
-                style: TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(color: _getOverlayColor(), fontSize: 14),
               ),
               const SizedBox(width: 8),
               Text(
                 "$_temperature",
-                style: const TextStyle(color: Colors.white, fontSize: 24),
+                style: TextStyle(color: _getOverlayColor(), fontSize: 24),
               ),
             ],
           ),
@@ -344,9 +457,9 @@ class _Mode1ScreenState extends State<Mode1Screen> {
             mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text(
+              Text(
                 'NEXT 6H',
-                style: TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(color: _getOverlayColor(), fontSize: 14),
               ),
               const SizedBox(width: 8),
               _buildWeatherIcon() ?? Container(),
@@ -361,11 +474,11 @@ class _Mode1ScreenState extends State<Mode1Screen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // Sfondo nero per uniformità
+      backgroundColor: Colors.black, // Sfondo nero
       body: Row(
         children: [
           Expanded(
-            flex: 2,
+            flex: _isMapVisible ? 2 : 1, // Se la mappa è nascosta, riduci lo spazio a sinistra
             child: Stack(
               children: [
                 Positioned(
@@ -373,45 +486,98 @@ class _Mode1ScreenState extends State<Mode1Screen> {
                   left: 16,
                   child: _buildLeftInfo(),
                 ),
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: _buildRightInfo(),
-                ),
+                if (_isMapVisible) // Mostra _buildRightInfo a destra della sezione sinistra solo se la mappa è visibile
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: _buildRightInfo(),
+                  ),
                 Positioned(
                   bottom: 16,
                   left: 16,
-                  child: Image.asset('assets/icons/hiking.png', height: 50),
+                  child: GestureDetector(
+                    onTap: GlobalSettings.tapIconsToExit
+                        ? () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MenuScreen()),
+                      );
+                    }
+                        : null, // Nessuna azione se tapIconsToExit è false
+                    child: Image.asset('assets/icons/hiking.png', height: 50),
+                  ),
                 ),
               ],
             ),
           ),
           Expanded(
-            flex: 1,
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: _currentPosition ?? const LatLng(46.0121, 8.9608),
-                initialZoom: 17,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate:
-                  'https://wmts10.geo.admin.ch/1.0.0/ch.swisstopo.swisstlm3d-karte-farbe/default/current/3857/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.gps_app',
-                ),
-                if (_currentPosition != null)
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: _currentPosition!,
-                        width: 30,
-                        height: 30,
-                        child: const Icon(Icons.location_pin, color: Colors.red, size: 30),
-                      ),
-                    ],
+            flex: _isMapVisible ? 1 : 2, // Se la mappa è nascosta, espandi lo spazio a destra
+            child: GestureDetector(
+              onTap: () {
+                _autoCenterTimer?.cancel();
+                _autoCenterTimer = Timer(const Duration(seconds: 5), () {
+                  if (_currentPosition != null && mounted) {
+                    _mapController.move(_currentPosition!, _currentZoom);
+                  }
+                });
+              },
+              onScaleStart: (_) => _autoCenterTimer?.cancel(),
+              child: _isMapVisible
+                  ? ShaderMask(
+                shaderCallback: (bounds) {
+                  return const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Colors.transparent, Colors.black],
+                    stops: [0.0, 30.0 / 200.0], // Sfumatura nei primi 30px
+                  ).createShader(Rect.fromLTRB(0, 0, bounds.width, bounds.height));
+                },
+                blendMode: BlendMode.dstIn,
+                child: FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: _currentPosition ?? const LatLng(46.0121, 8.9608),
+                    initialZoom: _currentZoom,
+                    onPositionChanged: (position, hasGesture) {
+                      if (hasGesture) {
+                        _autoCenterTimer?.cancel();
+                        _autoCenterTimer = Timer(const Duration(seconds: 5), () {
+                          if (_currentPosition != null && mounted) {
+                            _mapController.move(_currentPosition!, _currentZoom);
+                          }
+                        });
+                      }
+                    },
                   ),
-              ],
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                      'https://wmts10.geo.admin.ch/1.0.0/ch.swisstopo.swisstlm3d-karte-farbe/default/current/3857/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.gps_app',
+                    ),
+                    if (_currentPosition != null)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: _currentPosition!,
+                            width: 30,
+                            height: 30,
+                            child: const Icon(Icons.location_pin, color: Colors.red, size: 30),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              )
+                  : Stack(
+                children: [
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: _buildRightInfo(), // Sposta a destra quando la mappa è nascosta
+                  ),
+                ],
+              ),
             ),
           ),
         ],
