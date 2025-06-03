@@ -1,5 +1,8 @@
 # NexGaze
 
+## Code
+The whole code is inside into the Lib folder
+
 ## Overview
 NexGaze is an innovative Internet of Things (IoT) project developed for the 2024/2025 academic year as part of the Master of Science in Engineering at SUPSI. Built as a Flutter application, NexGaze delivers a wearable smart-glasses solution for endurance athletes, integrating real-time biometric and environmental data into a heads-up display (HUD). By leveraging off-the-shelf hardware like Xreal One glasses, Garmin HRM-Dual, and BrainBit EEG, NexGaze provides glance-free performance metrics for activities such as hiking, running, cycling, skiing, yoga, and relaxation, enhancing safety and focus.
 
