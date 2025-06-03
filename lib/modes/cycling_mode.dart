@@ -167,7 +167,7 @@ class _Mode3ScreenState extends State<Mode3Screen> {
   // Fetch route to destination using Google Maps API
   Future<void> _getRoute() async {
     if (_currentPosition == null || _destination == null) return;
-    const String apiKey = 'AIzaSyAZShF7hqY0Gc5iW5Ce4giT6HBBPAJAnZo';
+    const String apiKey = 'YOUR GOOGLE API-CODE';
     final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/directions/json?'
             'origin=${_currentPosition!.latitude},${_currentPosition!.longitude}'
