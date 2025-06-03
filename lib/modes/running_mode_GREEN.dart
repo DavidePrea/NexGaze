@@ -7,16 +7,17 @@ import 'package:http/http.dart' as http;
 import 'package:pedometer/pedometer.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_tts/flutter_tts.dart'; // Aggiunto per TTS
+import 'package:flutter_tts/flutter_tts.dart'; // Added for text-to-speech
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
 import '../widgets/heart_monitor/heart_monitor_controller.dart';
 import '../widgets/heart_monitor/heart_monitor_widget.dart';
-import '../screens/setup_screen.dart'; // Aggiornato il percorso per accedere a GlobalSettings
-import '../screens/menu_screen.dart'; // Importa per la navigazione verso MenuScreen
+import '../screens/setup_screen.dart'; // Updated path for GlobalSettings
+import '../screens/menu_screen.dart'; // Import for navigation to MenuScreen
 
+// Widget for Mode2Screen, handling fitness tracking functionality
 class Mode2Screen extends StatefulWidget {
   const Mode2Screen({super.key});
 
@@ -25,52 +26,55 @@ class Mode2Screen extends StatefulWidget {
 }
 
 class _Mode2ScreenState extends State<Mode2Screen> {
-  LatLng? _currentPosition;
-  LatLng? _lastPosition;
-  double _totalDistance = 2542.0; // Inizializzato a 2542.0 metri
-  double? _magneticDirection;
-  double? _speed;
-  DateTime? _lastTime;
+  LatLng? _currentPosition; // Current GPS position
+  LatLng? _lastPosition; // Last recorded GPS position
+  double _totalDistance = 2542.0; // Initialized total distance in meters
+  double? _magneticDirection; // Compass heading
+  double? _speed; // Current speed in km/h
+  DateTime? _lastTime; // Last position update time
 
-  late Timer _timer;
-  String _currentTime = "14:50"; // Orario fisso a 14:50
-  final Distance _distance = const Distance();
+  late Timer _timer; // Timer for periodic updates
+  String _currentTime = "14:50"; // Fixed time display
+  final Distance _distance = const Distance(); // Distance calculation utility
 
-  Stream<StepCount>? _stepCountStream;
-  StreamSubscription<StepCount>? _stepCountSubscription; // Aggiunto per gestire la cancellazione
-  StreamSubscription<CompassEvent>? _compassSubscription; // Aggiunto per gestire la cancellazione
-  StreamSubscription<Position>? _positionSubscription; // Aggiunto per gestire la cancellazione
-  int _initialSteps = 0;
-  int _steps = 0;
+  Stream<StepCount>? _stepCountStream; // Stream for step count
+  StreamSubscription<StepCount>? _stepCountSubscription; // Subscription for step count stream
+  StreamSubscription<CompassEvent>? _compassSubscription; // Subscription for compass stream
+  StreamSubscription<Position>? _positionSubscription; // Subscription for position stream
+  int _initialSteps = 0; // Initial step count
+  int _steps = 0; // Current step count
 
-  String? _temperature;
+  String? _temperature; // Current temperature
 
-  late HeartMonitorController _heartController;
+  late HeartMonitorController _heartController; // Controller for heart rate monitoring
 
-  // Variabili per il cronometro
-  Timer? _chronoTimer;
-  Duration _chronoDuration = const Duration(hours: 0, minutes: 14, seconds: 3); // Inizializzato a 00:14:03
-  bool _isChronoRunning = false;
-  bool _hasSpokenOneMinute = false; // Per evitare di ripetere il messaggio
+  // Stopwatch variables
+  Timer? _chronoTimer; // Timer for stopwatch
+  Duration _chronoDuration = const Duration(hours: 0, minutes: 14, seconds: 3); // Initialized stopwatch time
+  bool _isChronoRunning = false; // Stopwatch running state
+  bool _hasSpokenOneMinute = false; // Flag to prevent repeating one-minute announcement
 
-  // MethodChannel per i tasti del telecomando
+  // MethodChannel for remote control key events
   static const platform = MethodChannel('com.example.app/keyevents');
 
-  // Sintetizzatore vocale
+  // Text-to-speech synthesizer
   final FlutterTts _tts = FlutterTts();
 
   @override
   void initState() {
     super.initState();
 
+    // Lock orientation to landscape
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
 
+    // Initialize heart rate monitoring
     _heartController = HeartMonitorController();
     _heartController.startMonitoring();
 
+    // Request permissions and initialize sensors
     _requestPermissions();
     _determinePosition();
     _compassSubscription = FlutterCompass.events?.listen((event) {
@@ -79,16 +83,17 @@ class _Mode2ScreenState extends State<Mode2Screen> {
       }
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      // Non aggiorniamo più _currentTime perché deve rimanere fisso a 14:50
+      // Timer for periodic updates (time not updated to keep 14:50)
     });
 
-    // Inizializza il listener per i tasti del telecomando
+    // Initialize remote control key listener
     _listenForKeyEvents();
 
-    // Inizializza il TTS
+    // Initialize text-to-speech
     _initTts();
   }
 
+  // Initialize text-to-speech settings
   Future<void> _initTts() async {
     await _tts.setLanguage('en-US');
     await _tts.setPitch(1.0);
@@ -96,20 +101,23 @@ class _Mode2ScreenState extends State<Mode2Screen> {
 
   @override
   void dispose() {
+    // Restore portrait orientation
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
+    // Clean up resources
     _heartController.stopMonitoring();
     _timer.cancel();
     _chronoTimer?.cancel();
-    _stepCountSubscription?.cancel(); // Cancella il listener dei passi
-    _compassSubscription?.cancel(); // Cancella il listener della bussola
-    _positionSubscription?.cancel(); // Cancella il listener della posizione
+    _stepCountSubscription?.cancel();
+    _compassSubscription?.cancel();
+    _positionSubscription?.cancel();
     _tts.stop();
     super.dispose();
   }
 
+  // Set up listener for remote control key events
   void _listenForKeyEvents() {
     platform.setMethodCallHandler((call) async {
       if (call.method == "keyDown") {
@@ -122,22 +130,23 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     });
   }
 
+  // Handle key down events
   void _handleKeyDown(int keyCode) {
-    if (!mounted) return; // Evita chiamate se il widget non è montato
+    if (!mounted) return;
     setState(() {
       switch (keyCode) {
-        case 24: // KEYCODE_VOLUME_UP (Tasto Su)
+        case 24: // Volume Up key
           if (_isChronoRunning) {
-            // Ferma il cronometro
+            // Stop stopwatch
             _chronoTimer?.cancel();
             _isChronoRunning = false;
           } else {
-            // Avvia il cronometro
+            // Start stopwatch
             _chronoTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
               if (mounted) {
                 setState(() {
                   _chronoDuration = _chronoDuration + const Duration(seconds: 1);
-                  // Controlla se il cronometro raggiunge 60 secondi
+                  // Announce one minute if enabled
                   if (_chronoDuration.inSeconds == 60 && !_hasSpokenOneMinute) {
                     if (GlobalSettings.voiceNotificationsEnabled) {
                       _tts.speak("One minute");
@@ -154,21 +163,23 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     });
   }
 
+  // Handle key up events
   void _handleKeyUp(int keyCode) {
-    if (!mounted) return; // Evita chiamate se il widget non è montato
+    if (!mounted) return;
     setState(() {
       switch (keyCode) {
-        case 66: // KEYCODE_ENTER (Tasto Centrale)
-        // Resetta il cronometro
+        case 66: // Enter key
+          // Reset stopwatch
           _chronoTimer?.cancel();
           _isChronoRunning = false;
-          _chronoDuration = const Duration(hours: 0, minutes: 14, seconds: 3); // Ripristina a 00:14:03
-          _hasSpokenOneMinute = false; // Resetta il flag per il messaggio vocale
+          _chronoDuration = const Duration(hours: 0, minutes: 14, seconds: 3);
+          _hasSpokenOneMinute = false;
           break;
       }
     });
   }
 
+  // Format duration for stopwatch display
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = twoDigits(duration.inHours);
@@ -177,6 +188,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     return '$hours:$minutes:$seconds';
   }
 
+  // Request activity recognition permission for step counting
   Future<void> _requestPermissions() async {
     final status = await Permission.activityRecognition.request();
     if (status.isGranted) {
@@ -185,15 +197,17 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     }
   }
 
+  // Handle step count updates
   void _onStepCount(StepCount event) {
     if (_initialSteps == 0 && event.steps > 0) {
       _initialSteps = event.steps;
     }
     if (_initialSteps > 0 && mounted) {
-      setState(() => _steps = (event.steps - _initialSteps) + 2802); // Aggiunge l'offset di 2802
+      setState(() => _steps = (event.steps - _initialSteps) + 2802);
     }
   }
 
+  // Fetch weather data for current location
   Future<void> _fetchWeather(double lat, double lon) async {
     final url = Uri.parse(
       'https://api.weatherapi.com/v1/forecast.json?key=000556fcf5894a2e90c93523252205&q=$lat,$lon&hours=4',
@@ -211,6 +225,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     }
   }
 
+  // Determine and track device position
   Future<void> _determinePosition() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
@@ -254,6 +269,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     });
   }
 
+  // Convert compass heading to direction label
   String _getDirectionLabel(double? direction) {
     if (direction == null) return '--';
     final directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
@@ -261,7 +277,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     return directions[index];
   }
 
-  // Funzione per mappare il nome del colore a un oggetto Color
+  // Map color name to Color object
   Color _getOverlayColor() {
     switch (GlobalSettings.overlayColor.toLowerCase()) {
       case 'white':
@@ -279,6 +295,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     }
   }
 
+  // Build compass direction indicator
   Widget _buildDirectionIndicator() {
     final double? direction = _magneticDirection;
     if (direction == null) {
@@ -287,14 +304,13 @@ class _Mode2ScreenState extends State<Mode2Screen> {
         style: TextStyle(color: _getOverlayColor(), fontSize: 14),
       );
     }
-    // Usa sempre la direzione magnetica, quindi inverti l'angolo
     final angle = -direction * (math.pi / 180);
     final label = _getDirectionLabel(direction);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: 48, // Larghezza fissa per l'immagine
+          width: 48,
           child: Align(
             alignment: Alignment.center,
             child: Transform.rotate(
@@ -305,7 +321,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
         ),
         const SizedBox(height: 4),
         SizedBox(
-          width: 80, // Larghezza fissa per il testo
+          width: 80,
           child: Text(
             '${direction.toStringAsFixed(0)}° $label',
             style: TextStyle(color: _getOverlayColor(), fontSize: 14),
@@ -316,6 +332,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     );
   }
 
+  // Build left-side information panel
   Widget _buildLeftInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,6 +445,7 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     );
   }
 
+  // Build right-side information panel
   Widget _buildRightInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -454,14 +472,14 @@ class _Mode2ScreenState extends State<Mode2Screen> {
     );
   }
 
+  // Build the main UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      //backgroundColor: Colors.black, // Sfondo nero per uniformità
-      backgroundColor: Color(0xFF00FF00), // Sfondo verde massimo (#00FF00)
+      backgroundColor: Color(0xFF00FF00), // Bright green background
       body: Stack(
         children: [
-          // Cronometro in alto al centro
+          // Stopwatch at top center
           Positioned(
             top: 16,
             left: 0,
@@ -496,12 +514,12 @@ class _Mode2ScreenState extends State<Mode2Screen> {
             child: GestureDetector(
               onTap: GlobalSettings.tapIconsToExit
                   ? () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MenuScreen()),
-                );
-              }
-                  : null, // Nessuna azione se tapIconsToExit è false
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MenuScreen()),
+                      );
+                    }
+                  : null,
               child: Image.asset('assets/icons/running.png', height: 50),
             ),
           ),

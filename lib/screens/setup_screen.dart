@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
-import 'menu_screen.dart'; // Importa menu_screen.dart per la navigazione
+import 'menu_screen.dart'; // Import for MenuScreen navigation
 
-// Classe per gestire le variabili globali
+// Class to manage global application settings
 class GlobalSettings {
-  static bool voiceNotificationsEnabled = false;
-  static String overlayColor = 'White';
-  static String language = 'English'; // Variabile globale per la lingua
-  static bool tapIconsToExit = true; // Variabile globale per tap icons to exit
-  static int? age; // Variabile globale per l'età
-  static String? gender; // Variabile globale per il genere
+  static bool voiceNotificationsEnabled = false; // Enable/disable voice notifications
+  static String overlayColor = 'White'; // Default overlay color for UI elements
+  static String language = 'English'; // Default language setting
+  static bool tapIconsToExit = true; // Enable/disable tap-to-exit on icons
+  static int? age; // User's age
+  static String? gender; // User's gender
 }
 
+// Screen for configuring application settings
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
 
@@ -20,39 +21,39 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  late bool _voiceNotificationsEnabled;
-  late String _overlayColor;
-  late String _language; // Variabile locale per la lingua
-  late bool _tapIconsToExit; // Variabile locale per tap icons to exit
-  bool _findMyBuddyEnabled = false;
-  String _buddyName = '';
-  String _buddyList = '';
-  final List<String> _availableColors = ['White', 'Yellow', 'Red', 'Green', 'Blue'];
-  final List<String> _availableLanguages = ['Deutsch', 'Français', 'English', 'Español', 'Italiano'];
-  final List<String> _buddyNames = ['Alice', 'Bob', 'Charlie'];
-
-  late int? _age; // Variabile locale per l'età
-  late String? _gender; // Variabile locale per il genere
+  late bool _voiceNotificationsEnabled; // Local state for voice notifications
+  late String _overlayColor; // Local state for overlay color
+  late String _language; // Local state for language
+  late bool _tapIconsToExit; // Local state for tap-to-exit
+  bool _findMyBuddyEnabled = false; // Local state for Find my Buddy feature
+  String _buddyName = ''; // Input for buddy name
+  String _buddyList = ''; // Displayed list of buddies
+  final List<String> _availableColors = ['White', 'Yellow', 'Red', 'Green', 'Blue']; // Available color options
+  final List<String> _availableLanguages = ['Deutsch', 'Français', 'English', 'Español', 'Italiano']; // Available language options
+  final List<String> _buddyNames = ['Alice', 'Bob', 'Charlie']; // Predefined buddy names
+  late int? _age; // Local state for age
+  late String? _gender; // Local state for gender
 
   @override
   void initState() {
     super.initState();
-    // Inizializza le variabili locali con i valori globali
+    // Initialize local settings with global values
     _voiceNotificationsEnabled = GlobalSettings.voiceNotificationsEnabled;
     _overlayColor = GlobalSettings.overlayColor;
-    _language = GlobalSettings.language; // Inizializza la lingua
-    _tapIconsToExit = GlobalSettings.tapIconsToExit; // Inizializza tap icons to exit
-    _age = GlobalSettings.age; // Inizializza l'età
-    _gender = GlobalSettings.gender; // Inizializza il genere
+    _language = GlobalSettings.language;
+    _tapIconsToExit = GlobalSettings.tapIconsToExit;
+    _age = GlobalSettings.age;
+    _gender = GlobalSettings.gender;
   }
 
+  // Display the list of available buddies
   void _showBuddies() {
     setState(() {
       _buddyList = _buddyNames.join(', ');
     });
   }
 
-  // Funzione per mappare i nomi dei colori ai valori Color
+  // Convert color name to Color object for UI rendering
   Color _getColorFromName(String colorName) {
     switch (colorName.toLowerCase()) {
       case 'white':
@@ -73,21 +74,21 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.black, // Set background to black
       body: SafeArea(
         child: Stack(
           children: [
             ListView(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16.0), // Padding for content
               children: [
-                // Titolo "SETUP"
+                // Setup title
                 const Text(
                   'SETUP',
                   style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
 
-                // Voice Notifications
+                // Toggle for voice notifications
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -100,16 +101,16 @@ class _SetupScreenState extends State<SetupScreen> {
                       onChanged: (value) {
                         setState(() {
                           _voiceNotificationsEnabled = value;
-                          GlobalSettings.voiceNotificationsEnabled = value; // Aggiorna lo stato globale
+                          GlobalSettings.voiceNotificationsEnabled = value; // Update global setting
                         });
                       },
-                      activeColor: Colors.red,
+                      activeColor: Colors.red, // Switch color when active
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
 
-                // Language
+                // Language selection dropdown
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -119,7 +120,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                     DropdownButton<String>(
                       value: _language,
-                      dropdownColor: Colors.grey[800],
+                      dropdownColor: Colors.grey[800], // Dropdown background color
                       style: const TextStyle(fontSize: 16),
                       items: _availableLanguages.map<DropdownMenuItem<String>>((String value) {
                         return DropdownMenuItem<String>(
@@ -133,7 +134,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       onChanged: (String? newValue) {
                         setState(() {
                           _language = newValue!;
-                          GlobalSettings.language = newValue; // Aggiorna lo stato globale
+                          GlobalSettings.language = newValue; // Update global setting
                         });
                       },
                     ),
@@ -141,7 +142,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Parameter Overlay Color
+                // Overlay color selection dropdown
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -165,7 +166,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       onChanged: (String? newValue) {
                         setState(() {
                           _overlayColor = newValue!;
-                          GlobalSettings.overlayColor = newValue; // Aggiorna lo stato globale
+                          GlobalSettings.overlayColor = newValue; // Update global setting
                         });
                       },
                     ),
@@ -173,7 +174,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Tap Icons to Exit Pages
+                // Toggle for tap-to-exit functionality
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -186,7 +187,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       onChanged: (value) {
                         setState(() {
                           _tapIconsToExit = value;
-                          GlobalSettings.tapIconsToExit = value; // Aggiorna lo stato globale
+                          GlobalSettings.tapIconsToExit = value; // Update global setting
                         });
                       },
                       activeColor: Colors.red,
@@ -195,7 +196,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Age
+                // Age input field
                 Row(
                   children: [
                     const Text(
@@ -219,8 +220,8 @@ class _SetupScreenState extends State<SetupScreen> {
                         ),
                         onChanged: (value) {
                           setState(() {
-                            _age = int.tryParse(value); // Converte la stringa in int, null se non valido
-                            GlobalSettings.age = _age; // Aggiorna lo stato globale
+                            _age = int.tryParse(value); // Parse input to integer
+                            GlobalSettings.age = _age; // Update global setting
                           });
                         },
                       ),
@@ -229,7 +230,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Gender
+                // Gender selection dropdown
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -254,7 +255,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       onChanged: (String? newValue) {
                         setState(() {
                           _gender = newValue;
-                          GlobalSettings.gender = newValue; // Aggiorna lo stato globale
+                          GlobalSettings.gender = newValue; // Update global setting
                         });
                       },
                     ),
@@ -262,7 +263,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Find my Buddy
+                // Toggle for Find my Buddy feature
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -282,7 +283,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   ],
                 ),
 
-                // My Buddy Name (enabled only when Find my Buddy is ON)
+                // Buddy name input field (visible when Find my Buddy is enabled)
                 if (_findMyBuddyEnabled)
                   Padding(
                     padding: const EdgeInsets.only(top: 16.0),
@@ -297,7 +298,7 @@ class _SetupScreenState extends State<SetupScreen> {
                           child: TextField(
                             style: const TextStyle(color: Colors.white),
                             decoration: const InputDecoration(
-                              hintText: ' Enter name',
+                              hintText: 'Enter name',
                               hintStyle: TextStyle(color: Colors.grey),
                               enabledBorder: UnderlineInputBorder(
                                 borderSide: BorderSide(color: Colors.white),
@@ -317,7 +318,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                   ),
 
-                // Show Buddies Button and List (enabled only when Find my Buddy is ON)
+                // Show buddies button and list (visible when Find my Buddy is enabled)
                 if (_findMyBuddyEnabled)
                   Padding(
                     padding: const EdgeInsets.only(top: 16.0),
@@ -327,7 +328,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         ElevatedButton(
                           onPressed: _showBuddies,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
+                            backgroundColor: Colors.blue, // Button color
                           ),
                           child: const Text(
                             'Show Buddies',
@@ -343,12 +344,12 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                   ),
 
-                // Spazio finale per evitare che il contenuto venga coperto dal link "Back"
+                // Extra space to prevent overlap with Back link
                 const SizedBox(height: 50),
               ],
             ),
 
-            // Link "Back" in basso a sinistra
+            // Back link to return to MenuScreen
             Positioned(
               bottom: 16,
               left: 16,

@@ -14,9 +14,10 @@ import 'dart:math' as math;
 
 import '../widgets/heart_monitor/heart_monitor_controller.dart';
 import '../widgets/heart_monitor/heart_monitor_widget.dart';
-import '../screens/setup_screen.dart'; // Importa per accedere a GlobalSettings
-import '../screens/menu_screen.dart'; // Importa per la navigazione verso MenuScreen
+import '../screens/setup_screen.dart'; // Import for accessing GlobalSettings
+import '../screens/menu_screen.dart'; // Import for navigation to MenuScreen
 
+// Widget for Mode1Screen, handling hiking mode with map and fitness tracking
 class Mode1Screen extends StatefulWidget {
   const Mode1Screen({super.key});
 
@@ -25,54 +26,54 @@ class Mode1Screen extends StatefulWidget {
 }
 
 class _Mode1ScreenState extends State<Mode1Screen> {
-  LatLng? _currentPosition;
-  LatLng? _lastPosition;
-  double? _altitude;
-  double _totalDistance = 0.0;
-  double? _bearing;
-  double? _magneticDirection;
-  double? _speed;
-  DateTime? _lastTime;
+  LatLng? _currentPosition; // Current GPS position
+  LatLng? _lastPosition; // Last recorded GPS position
+  double? _altitude; // Current altitude
+  double _totalDistance = 0.0; // Total distance traveled
+  double? _bearing; // Current bearing
+  double? _magneticDirection; // Compass heading
+  double? _speed; // Current speed in km/h
+  DateTime? _lastTime; // Last position update time
 
-  late Timer _timer;
-  String _currentTime = DateFormat.Hm().format(DateTime.now()); // Solo ore e minuti
-  final MapController _mapController = MapController();
-  final Distance _distance = const Distance();
+  late Timer _timer; // Timer for periodic updates
+  String _currentTime = DateFormat.Hm().format(DateTime.now()); // Current time (hours and minutes)
+  final MapController _mapController = MapController(); // Controller for FlutterMap
+  final Distance _distance = const Distance(); // Distance calculation utility
 
-  Stream<StepCount>? _stepCountStream;
-  StreamSubscription<StepCount>? _stepCountSubscription; // Aggiunto per gestire la cancellazione
-  StreamSubscription<CompassEvent>? _compassSubscription; // Aggiunto per gestire la cancellazione
-  StreamSubscription<Position>? _positionSubscription; // Aggiunto per gestire la cancellazione
-  int _initialSteps = 0;
-  int _steps = 0;
+  Stream<StepCount>? _stepCountStream; // Stream for step count
+  StreamSubscription<StepCount>? _stepCountSubscription; // Subscription for step count stream
+  StreamSubscription<CompassEvent>? _compassSubscription; // Subscription for compass stream
+  StreamSubscription<Position>? _positionSubscription; // Subscription for position stream
+  int _initialSteps = 0; // Initial step count
+  int _steps = 0; // Current step count
 
-  String? _temperature;
-  String? _weatherTrend;
+  String? _temperature; // Current temperature
+  String? _weatherTrend; // Weather trend for next 6 hours
 
-  late HeartMonitorController _heartController;
+  late HeartMonitorController _heartController; // Controller for heart rate monitoring
 
-  // Variabile per controllare la visibilità della mappa
-  bool _isMapVisible = true; // Inizialmente visibile (ON)
+  bool _isMapVisible = true; // Map visibility flag (default: ON)
+  Timer? _autoCenterTimer; // Timer for auto-centering map
+  double _currentZoom = 17.0; // Current map zoom level
 
-  // Timer per l'auto-centramento della mappa
-  Timer? _autoCenterTimer;
-  double _currentZoom = 17.0; // Livello di zoom corrente
-
-  // MethodChannel per i tasti del telecomando
+  // MethodChannel for remote control key events
   static const platform = MethodChannel('com.example.app/keyevents');
 
   @override
   void initState() {
     super.initState();
 
+    // Lock orientation to landscape
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
 
+    // Initialize heart rate monitoring
     _heartController = HeartMonitorController();
     _heartController.startMonitoring();
 
+    // Request permissions and initialize sensors
     _requestPermissions();
     _determinePosition();
     _compassSubscription = FlutterCompass.events?.listen((event) {
@@ -80,16 +81,17 @@ class _Mode1ScreenState extends State<Mode1Screen> {
         setState(() => _magneticDirection = event.heading);
       }
     });
+    // Update time every second
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() => _currentTime = DateFormat.Hm().format(DateTime.now()));
       }
     });
 
-    // Inizializza il listener per i tasti del telecomando
+    // Initialize remote control key listener
     _listenForKeyEvents();
 
-    // Auto-centramento iniziale dopo un breve ritardo per garantire che la posizione sia disponibile
+    // Auto-center map after initial position is available
     Future.delayed(const Duration(seconds: 1), () {
       if (_currentPosition != null && mounted) {
         _mapController.move(_currentPosition!, _currentZoom);
@@ -99,19 +101,22 @@ class _Mode1ScreenState extends State<Mode1Screen> {
 
   @override
   void dispose() {
+    // Restore portrait orientation
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
+    // Clean up resources
     _heartController.stopMonitoring();
     _timer.cancel();
-    _stepCountSubscription?.cancel(); // Cancella il listener dei passi
-    _compassSubscription?.cancel(); // Cancella il listener della bussola
-    _positionSubscription?.cancel(); // Cancella il listener della posizione
+    _stepCountSubscription?.cancel();
+    _compassSubscription?.cancel();
+    _positionSubscription?.cancel();
     _autoCenterTimer?.cancel();
     super.dispose();
   }
 
+  // Set up listener for remote control key events
   void _listenForKeyEvents() {
     platform.setMethodCallHandler((call) async {
       if (call.method == "keyDown") {
@@ -121,21 +126,23 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     });
   }
 
+  // Handle key down events
   void _handleKeyDown(int keyCode) {
-    if (!mounted) return; // Evita chiamate se il widget non è montato
+    if (!mounted) return;
     setState(() {
       switch (keyCode) {
-        case 25: // KEYCODE_VOLUME_DOWN
-          _isMapVisible = !_isMapVisible; // Alterna tra ON e OFF
+        case 25: // Volume Down key
+          _isMapVisible = !_isMapVisible; // Toggle map visibility
           break;
-        case 24: // KEYCODE_DPAD_UP
-          _totalDistance = 0.0; // Resetta DIST
-          _steps = 0; // Resetta STEPS
+        case 24: // DPad Up key
+          _totalDistance = 0.0; // Reset distance
+          _steps = 0; // Reset steps
           break;
       }
     });
   }
 
+  // Request activity recognition permission for step counting
   Future<void> _requestPermissions() async {
     final status = await Permission.activityRecognition.request();
     if (status.isGranted) {
@@ -144,6 +151,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     }
   }
 
+  // Handle step count updates
   void _onStepCount(StepCount event) {
     if (_initialSteps == 0 && event.steps > 0) {
       _initialSteps = event.steps;
@@ -153,6 +161,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     }
   }
 
+  // Fetch weather data and trend
   Future<void> _fetchWeather(double lat, double lon) async {
     final url = Uri.parse(
       'https://api.weatherapi.com/v1/forecast.json?key=000556fcf5894a2e90c93523252205&q=$lat,$lon&hours=4',
@@ -189,6 +198,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     }
   }
 
+  // Track device position and update metrics
   Future<void> _determinePosition() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
@@ -232,7 +242,6 @@ class _Mode1ScreenState extends State<Mode1Screen> {
         setState(() {
           _currentPosition = newLatLng;
           _altitude = position.altitude;
-          // Aggiorna il livello di zoom corrente
           _currentZoom = _mapController.camera.zoom;
         });
       }
@@ -241,6 +250,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     });
   }
 
+  // Convert compass heading to direction label
   String _getDirectionLabel(double? direction) {
     if (direction == null) return '--';
     final directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
@@ -248,7 +258,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     return directions[index];
   }
 
-  // Funzione per mappare il nome del colore a un oggetto Color
+  // Map color name to Color object
   Color _getOverlayColor() {
     switch (GlobalSettings.overlayColor.toLowerCase()) {
       case 'white':
@@ -266,8 +276,9 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     }
   }
 
+  // Build compass direction indicator
   Widget _buildDirectionIndicator() {
-    final double? direction = _magneticDirection; // Usa solo il sensore di magnetismo
+    final double? direction = _magneticDirection;
     if (direction == null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,7 +291,6 @@ class _Mode1ScreenState extends State<Mode1Screen> {
         ],
       );
     }
-    // Usa sempre la direzione magnetica, quindi inverti l'angolo
     final angle = -direction * (math.pi / 180);
     final label = _getDirectionLabel(direction);
     return Column(
@@ -298,6 +308,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     );
   }
 
+  // Build weather trend icon
   Widget? _buildWeatherIcon() {
     switch (_weatherTrend) {
       case 'improving':
@@ -311,6 +322,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     }
   }
 
+  // Build left-side information panel
   Widget _buildLeftInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,6 +417,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     );
   }
 
+  // Build right-side information panel
   Widget _buildRightInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -471,14 +484,16 @@ class _Mode1ScreenState extends State<Mode1Screen> {
     );
   }
 
+  // Build the main UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // Sfondo nero
+      backgroundColor: Colors.black, // Black background
       body: Row(
         children: [
+          // Left area, adjusts size based on map visibility
           Expanded(
-            flex: _isMapVisible ? 2 : 1, // Se la mappa è nascosta, riduci lo spazio a sinistra
+            flex: _isMapVisible ? 2 : 1,
             child: Stack(
               children: [
                 Positioned(
@@ -486,7 +501,7 @@ class _Mode1ScreenState extends State<Mode1Screen> {
                   left: 16,
                   child: _buildLeftInfo(),
                 ),
-                if (_isMapVisible) // Mostra _buildRightInfo a destra della sezione sinistra solo se la mappa è visibile
+                if (_isMapVisible)
                   Positioned(
                     top: 16,
                     right: 16,
@@ -498,20 +513,21 @@ class _Mode1ScreenState extends State<Mode1Screen> {
                   child: GestureDetector(
                     onTap: GlobalSettings.tapIconsToExit
                         ? () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => const MenuScreen()),
-                      );
-                    }
-                        : null, // Nessuna azione se tapIconsToExit è false
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => const MenuScreen()),
+                            );
+                          }
+                        : null,
                     child: Image.asset('assets/icons/hiking.png', height: 50),
                   ),
                 ),
               ],
             ),
           ),
+          // Right area, contains map or right info when map is hidden
           Expanded(
-            flex: _isMapVisible ? 1 : 2, // Se la mappa è nascosta, espandi lo spazio a destra
+            flex: _isMapVisible ? 1 : 2,
             child: GestureDetector(
               onTap: () {
                 _autoCenterTimer?.cancel();
@@ -524,60 +540,60 @@ class _Mode1ScreenState extends State<Mode1Screen> {
               onScaleStart: (_) => _autoCenterTimer?.cancel(),
               child: _isMapVisible
                   ? ShaderMask(
-                shaderCallback: (bounds) {
-                  return const LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [Colors.transparent, Colors.black],
-                    stops: [0.0, 30.0 / 200.0], // Sfumatura nei primi 30px
-                  ).createShader(Rect.fromLTRB(0, 0, bounds.width, bounds.height));
-                },
-                blendMode: BlendMode.dstIn,
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _currentPosition ?? const LatLng(46.0121, 8.9608),
-                    initialZoom: _currentZoom,
-                    onPositionChanged: (position, hasGesture) {
-                      if (hasGesture) {
-                        _autoCenterTimer?.cancel();
-                        _autoCenterTimer = Timer(const Duration(seconds: 5), () {
-                          if (_currentPosition != null && mounted) {
-                            _mapController.move(_currentPosition!, _currentZoom);
-                          }
-                        });
-                      }
-                    },
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                      'https://wmts10.geo.admin.ch/1.0.0/ch.swisstopo.swisstlm3d-karte-farbe/default/current/3857/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.example.gps_app',
-                    ),
-                    if (_currentPosition != null)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _currentPosition!,
-                            width: 30,
-                            height: 30,
-                            child: const Icon(Icons.location_pin, color: Colors.red, size: 30),
+                      shaderCallback: (bounds) {
+                        return const LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [Colors.transparent, Colors.black],
+                          stops: [0.0, 30.0 / 200.0], // Fade effect in first 30px
+                        ).createShader(Rect.fromLTRB(0, 0, bounds.width, bounds.height));
+                      },
+                      blendMode: BlendMode.dstIn,
+                      child: FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: _currentPosition ?? const LatLng(46.0121, 8.9608),
+                          initialZoom: _currentZoom,
+                          onPositionChanged: (position, hasGesture) {
+                            if (hasGesture) {
+                              _autoCenterTimer?.cancel();
+                              _autoCenterTimer = Timer(const Duration(seconds: 5), () {
+                                if (_currentPosition != null && mounted) {
+                                  _mapController.move(_currentPosition!, _currentZoom);
+                                }
+                              });
+                            }
+                          },
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate:
+                                'https://wmts10.geo.admin.ch/1.0.0/ch.swisstopo.swisstlm3d-karte-farbe/default/current/3857/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.example.gps_app',
                           ),
+                          if (_currentPosition != null)
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: _currentPosition!,
+                                  width: 30,
+                                  height: 30,
+                                  child: const Icon(Icons.location_pin, color: Colors.red, size: 30),
+                                ),
+                              ],
+                            ),
                         ],
                       ),
-                  ],
-                ),
-              )
+                    )
                   : Stack(
-                children: [
-                  Positioned(
-                    top: 16,
-                    right: 16,
-                    child: _buildRightInfo(), // Sposta a destra quando la mappa è nascosta
-                  ),
-                ],
-              ),
+                      children: [
+                        Positioned(
+                          top: 16,
+                          right: 16,
+                          child: _buildRightInfo(),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ],

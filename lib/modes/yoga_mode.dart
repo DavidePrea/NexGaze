@@ -10,7 +10,7 @@ import '../widgets/heart_monitor/heart_monitor_widget.dart';
 import '../widgets/brain_bit/brain_bit_controller.dart';
 import '../widgets/brain_bit/brain_bit_widget.dart';
 
-/// Schermata Yoga Mode (Mode5) con selezione device -> calibrazione -> video
+/// Yoga Mode Screen (Mode5) with device selection, calibration, and video playback
 class Mode5Screen extends StatefulWidget {
   const Mode5Screen({super.key});
 
@@ -19,44 +19,43 @@ class Mode5Screen extends StatefulWidget {
 }
 
 class _Mode5ScreenState extends State<Mode5Screen> {
-  late final VideoPlayerController _controller;
-  bool _isInitialized = false;
+  late final VideoPlayerController _controller; // Controller for video playback
+  bool _isInitialized = false; // Flag to track video initialization
 
-  late final HeartMonitorController _heartController;
-  late final BrainBitController _brainBitController;
+  late final HeartMonitorController _heartController; // Controller for heart rate monitoring
+  late final BrainBitController _brainBitController; // Controller for BrainBit device
 
-  late final Timer _clockTimer;
-  String _currentTime = DateFormat.Hm().format(DateTime.now());
+  late final Timer _clockTimer; // Timer for updating clock
+  String _currentTime = DateFormat.Hm().format(DateTime.now()); // Current time (hours and minutes)
 
-  bool _calibrationConfirmed = false;
+  bool _calibrationConfirmed = false; // Flag to track calibration confirmation
 
-  // Variabile di supporto per mostrare “Sto connettendo…”
-  bool _isAttemptingConnection = false;
+  bool _isAttemptingConnection = false; // Flag to show "Connecting..." message
 
   @override
   void initState() {
     super.initState();
 
-    // Forziamo l’orientamento a landscape
+    // Lock orientation to landscape
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
 
-    // Avviamo il monitor cardiaco
+    // Initialize heart rate monitoring
     _heartController = HeartMonitorController()..startMonitoring();
 
-    // Avviamo BrainBitController con autoConnect=false e context
+    // Initialize BrainBit controller with autoConnect disabled
     _brainBitController = BrainBitController(autoConnect: false, context: context)
       ..startMonitoring();
 
-    // Prepariamo il video (non parte ancora)
+    // Initialize yoga video
     _controller = VideoPlayerController.asset('assets/videos/yoga.mp4')
       ..initialize().then((_) {
         setState(() => _isInitialized = true);
       });
 
-    // Timer per aggiornare l’orologio ogni secondo
+    // Update clock every second
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _currentTime = DateFormat.Hm().format(DateTime.now()));
     });
@@ -64,78 +63,78 @@ class _Mode5ScreenState extends State<Mode5Screen> {
 
   @override
   void dispose() {
+    // Clean up resources
     _controller.dispose();
     _heartController.stopMonitoring();
     _brainBitController.stopMonitoring();
     _clockTimer.cancel();
+    // Restore portrait orientation
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
+  // Build the main UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: _isInitialized
           ? Stack(
-        children: [
-          // Se non ho ancora confermato la calibrazione,
-          // controllo due casi: selezione device o calibrazione
-          if (!_calibrationConfirmed)
-            _buildDeviceSelectionOrCalibration()
-          else
-          // Altrimenti riproduco il video
-            Center(
-              child: AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              ),
-            ),
+              children: [
+                // Show device selection or calibration if not confirmed
+                if (!_calibrationConfirmed)
+                  _buildDeviceSelectionOrCalibration()
+                else
+                  // Play video if calibration is confirmed
+                  Center(
+                    child: AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
+                    ),
+                  ),
 
-          // Orologio in alto a sinistra
-          Positioned(
-            top: 16,
-            left: 16,
-            child: Text(
-              _currentTime,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+                // Clock at top-left
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  child: Text(
+                    _currentTime,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
 
-          // Battito cardiaco in alto a destra
-          Positioned(
-            top: 16,
-            right: 16,
-            child: HeartMonitorWidget(controller: _heartController),
-          ),
+                // Heart rate monitor at top-right
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: HeartMonitorWidget(controller: _heartController),
+                ),
 
-          // BrainBitWidget in basso a sinistra
-          Positioned(
-            bottom: 16,
-            left: 16,
-            child: BrainBitWidget(controller: _brainBitController),
-          ),
-        ],
-      )
-          : const Center(child: CircularProgressIndicator()),
+                // BrainBit widget at bottom-left
+                Positioned(
+                  bottom: 16,
+                  left: 16,
+                  child: BrainBitWidget(controller: _brainBitController),
+                ),
+              ],
+            )
+          : const Center(child: CircularProgressIndicator()), // Show loading until video is ready
     );
   }
 
-  /// Costruisce sia la lista dei dispositivi (se non connesso),
-  /// sia il dialog di calibrazione (se connesso ma non calibrato),
-  /// sia il pulsante "Inizia la sessione" (se calibrato).
+  /// Builds device selection list, calibration progress, or start session button
   Widget _buildDeviceSelectionOrCalibration() {
     return Center(
       child: ValueListenableBuilder<BrainBitController>(
         valueListenable: _brainBitController,
         builder: (context, ctrl, _) {
-          // 1️⃣ Se NON sono connesso, mostro solo la selezione device
+          // Case 1: Not connected, show device selection
           if (!ctrl.isConnected) {
-            // Se sto provando a connettermi (premuto il device), mostro “Sto connettendo…”
+            // Show "Connecting..." during connection attempt
             if (_isAttemptingConnection) {
               return Container(
                 padding: const EdgeInsets.all(20),
@@ -160,7 +159,7 @@ class _Mode5ScreenState extends State<Mode5Screen> {
               );
             }
 
-            // Se sto ancora scansionando e non ho devices, mostro un messaggio
+            // Show scanning message if no devices found
             if (ctrl.isScanning && ctrl.devices.isEmpty) {
               return Container(
                 padding: const EdgeInsets.all(20),
@@ -175,7 +174,7 @@ class _Mode5ScreenState extends State<Mode5Screen> {
               );
             }
 
-            // Se ho trovato uno o più dispositivi, li elenco
+            // Show list of found devices
             if (ctrl.devices.isNotEmpty) {
               return Container(
                 padding: const EdgeInsets.all(16),
@@ -252,7 +251,7 @@ class _Mode5ScreenState extends State<Mode5Screen> {
               );
             }
 
-            // Se non sto scansionando e non ho devices:
+            // Show retry option if no devices found
             return Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -269,7 +268,7 @@ class _Mode5ScreenState extends State<Mode5Screen> {
                   const SizedBox(height: 12),
                   ElevatedButton(
                     onPressed: () {
-                      ctrl.startMonitoring(); // Rilancio la scansione
+                      ctrl.startMonitoring(); // Restart scanning
                     },
                     child: const Text('Riprova ricerca'),
                   ),
@@ -278,7 +277,7 @@ class _Mode5ScreenState extends State<Mode5Screen> {
             );
           }
 
-          // 2️⃣ Sono connesso ma NON calibrato: mostro progresso di calibrazione + nome device
+          // Case 2: Connected but not calibrated, show calibration progress
           if (ctrl.isConnected && !ctrl.isCalibrated) {
             final deviceName = ctrl.connectedDeviceName ?? 'BrainBit sconosciuto';
             final pct = (ctrl.calibrationProgress * 100)
@@ -313,7 +312,6 @@ class _Mode5ScreenState extends State<Mode5Screen> {
                   const SizedBox(height: 12),
                   ElevatedButton(
                     onPressed: () {
-                      // Pulsante per riprovare in caso di errore
                       ctrl.stopMonitoring();
                       ctrl.startMonitoring();
                       setState(() {});
@@ -325,7 +323,7 @@ class _Mode5ScreenState extends State<Mode5Screen> {
             );
           }
 
-          // 3️⃣ Sono calibrato, ma l’utente non ha ancora premuto “Inizia sessione”
+          // Case 3: Calibrated, show start session button
           return Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(

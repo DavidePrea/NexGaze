@@ -1,6 +1,6 @@
-//46.0121, 8.9608
+//46.0121, 8.9608 // Default coordinates for map initialization
 
-// cycling_mode.dart: aggiunto supporto TTS "Go my friend..."
+// cycling_mode.dart: Added TTS support for "Go my friend..." announcement
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -15,6 +15,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import '../widgets/heart_monitor/heart_monitor_controller.dart';
 import '../widgets/heart_monitor/heart_monitor_widget.dart';
 
+// Widget for cycling mode screen with map and navigation
 class Mode3Screen extends StatefulWidget {
   const Mode3Screen({super.key});
 
@@ -23,42 +24,46 @@ class Mode3Screen extends StatefulWidget {
 }
 
 class _Mode3ScreenState extends State<Mode3Screen> {
-  late GoogleMapController _mapController;
-  LatLng? _currentPosition;
-  LatLng? _lastPosition;
-  DateTime? _lastTime;
-  double _totalDistance = 0.0;
-  double? _speed;
-  double? _bearing;
-  String _currentTime = DateFormat.Hms().format(DateTime.now());
+  late GoogleMapController _mapController; // Controller for Google Map
+  LatLng? _currentPosition; // Current GPS position
+  LatLng? _lastPosition; // Last recorded GPS position
+  DateTime? _lastTime; // Last position update time
+  double _totalDistance = 0.0; // Total distance traveled
+  double? _speed; // Current speed in km/h
+  double? _bearing; // Current bearing
+  String _currentTime = DateFormat.Hms().format(DateTime.now()); // Current time display
 
-  LatLng? _destination;
-  double? _distanceToDestination;
-  final List<double> _recentSpeeds = [];
-  final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
-  StreamSubscription<Position>? _positionStream;
-  late Timer _clockTimer;
-  final latlong.Distance _distance = const latlong.Distance();
-  bool _mapVisible = false;
-  bool _followUser = true;
-  Timer? _mapInteractionTimer;
-  final FlutterTts _tts = FlutterTts();
+  LatLng? _destination; // Destination coordinates
+  double? _distanceToDestination; // Distance to destination
+  final List<double> _recentSpeeds = []; // List of recent speeds for averaging
+  final Set<Marker> _markers = {}; // Map markers
+  final Set<Polyline> _polylines = {}; // Map polylines for route
+  StreamSubscription<Position>? _positionStream; // Stream for location updates
+  late Timer _clockTimer; // Timer for clock updates
+  final latlong.Distance _distance = const latlong.Distance(); // Distance calculation utility
+  bool _mapVisible = false; // Map visibility flag
+  bool _followUser = true; // Flag to follow user location
+  Timer? _mapInteractionTimer; // Timer for map interaction timeout
+  final FlutterTts _tts = FlutterTts(); // Text-to-speech instance
 
-  // Dichiarazione del controller per il battito cardiaco
+  // Heart rate monitor controller
   late HeartMonitorController _heartController;
 
   @override
   void initState() {
     super.initState();
+    // Lock orientation to landscape
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
+    // Initialize heart rate monitoring
     _heartController = HeartMonitorController();
-    _heartController.startMonitoring(); // Avvia il monitoraggio
+    _heartController.startMonitoring();
+    // Initialize map and location updates
     _retryGoogleMap();
     _startLocationUpdates();
+    // Update clock every second
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() {
         _currentTime = DateFormat.Hms().format(DateTime.now());
@@ -68,10 +73,12 @@ class _Mode3ScreenState extends State<Mode3Screen> {
 
   @override
   void dispose() {
+    // Clean up resources
     _positionStream?.cancel();
     _clockTimer.cancel();
     _mapInteractionTimer?.cancel();
-    _heartController.stopMonitoring(); // Ferma il monitoraggio
+    _heartController.stopMonitoring();
+    // Restore portrait orientation
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
@@ -81,15 +88,18 @@ class _Mode3ScreenState extends State<Mode3Screen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Retry map initialization after dependencies change
     Future.delayed(const Duration(milliseconds: 500), _retryGoogleMap);
   }
 
+  // Retry Google Map initialization
   void _retryGoogleMap() async {
     setState(() => _mapVisible = false);
     await Future.delayed(const Duration(milliseconds: 150));
     setState(() => _mapVisible = true);
   }
 
+  // Start listening for location updates
   void _startLocationUpdates() async {
     final permission = await Geolocator.requestPermission();
     if (permission == LocationPermission.denied) return;
@@ -104,8 +114,8 @@ class _Mode3ScreenState extends State<Mode3Screen> {
       final now = DateTime.now();
       final distanceMoved = _lastPosition != null
           ? _distance(
-          latlong.LatLng(newLatLng.latitude, newLatLng.longitude),
-          latlong.LatLng(_lastPosition!.latitude, _lastPosition!.longitude))
+              latlong.LatLng(newLatLng.latitude, newLatLng.longitude),
+              latlong.LatLng(_lastPosition!.latitude, _lastPosition!.longitude))
           : 0.0;
 
       final duration = _lastTime != null ? now.difference(_lastTime!).inSeconds : 0;
@@ -137,6 +147,7 @@ class _Mode3ScreenState extends State<Mode3Screen> {
         _currentPosition = newLatLng;
       });
 
+      // Update map camera to follow user
       if (_followUser && _mapController != null) {
         _mapController.getZoomLevel().then((currentZoom) {
           _mapController.animateCamera(
@@ -153,6 +164,7 @@ class _Mode3ScreenState extends State<Mode3Screen> {
     });
   }
 
+  // Fetch route to destination using Google Maps API
   Future<void> _getRoute() async {
     if (_currentPosition == null || _destination == null) return;
     const String apiKey = 'AIzaSyAZShF7hqY0Gc5iW5Ce4giT6HBBPAJAnZo';
@@ -168,7 +180,7 @@ class _Mode3ScreenState extends State<Mode3Screen> {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['routes'].isEmpty) {
-          debugPrint('Nessun percorso trovato.');
+          debugPrint('No route found.');
           setState(() {
             _distanceToDestination = null;
           });
@@ -179,7 +191,7 @@ class _Mode3ScreenState extends State<Mode3Screen> {
           data['routes'][0]['overview_polyline']['points'],
         );
         final List<LatLng> polylineCoordinates =
-        points.map((e) => LatLng(e.latitude, e.longitude)).toList();
+            points.map((e) => LatLng(e.latitude, e.longitude)).toList();
 
         double totalDistance = 0.0;
         for (int i = 0; i < polylineCoordinates.length - 1; i++) {
@@ -202,24 +214,26 @@ class _Mode3ScreenState extends State<Mode3Screen> {
           _distanceToDestination = totalDistance;
         });
       } else {
-        debugPrint('Errore nella richiesta API: ${response.statusCode}');
+        debugPrint('API request error: ${response.statusCode}');
         setState(() {
           _distanceToDestination = null;
         });
       }
     } catch (e) {
-      debugPrint('Errore durante la chiamata API: $e');
+      debugPrint('API call error: $e');
       setState(() {
         _distanceToDestination = null;
       });
     }
   }
 
+  // Calculate average speed from recent speeds
   double _calculateAverageSpeed() {
     if (_recentSpeeds.isEmpty) return 0.0;
     return _recentSpeeds.reduce((a, b) => a + b) / _recentSpeeds.length;
   }
 
+  // Calculate estimated time of arrival (ETA)
   String _calculateETA() {
     if (_distanceToDestination == null || _recentSpeeds.isEmpty) return '--';
     final averageSpeed = _calculateAverageSpeed();
@@ -228,6 +242,7 @@ class _Mode3ScreenState extends State<Mode3Screen> {
     return etaMinutes.toStringAsFixed(0);
   }
 
+  // Build left-side information panel
   Widget _buildLeftInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,17 +325,18 @@ class _Mode3ScreenState extends State<Mode3Screen> {
     );
   }
 
+  // Build right-side information panel
   Widget _buildRightInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // Aggiungi qui eventuali altri dati, se necessario
         const SizedBox(height: 12),
         HeartMonitorWidget(controller: _heartController),
       ],
     );
   }
 
+  // Build Google Map widget
   Widget _buildGoogleMap() {
     return GoogleMap(
       initialCameraPosition: CameraPosition(
@@ -344,6 +360,7 @@ class _Mode3ScreenState extends State<Mode3Screen> {
           _markers.add(Marker(markerId: const MarkerId('dest'), position: latLng));
         });
         _getRoute();
+        // Announce destination set
         await _tts.setLanguage('en-US');
         await _tts.setPitch(1.0);
         await _tts.speak("Go my friend, your destination is waiting for you!");
@@ -359,13 +376,14 @@ class _Mode3ScreenState extends State<Mode3Screen> {
     );
   }
 
+  // Build the main UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Row(
         children: [
-          // Area nera a sinistra (2/3 dello schermo)
+          // Left area (2/3 of screen) for info
           Expanded(
             flex: 2,
             child: Stack(
@@ -388,7 +406,7 @@ class _Mode3ScreenState extends State<Mode3Screen> {
               ],
             ),
           ),
-          // Mappa a destra (1/3 dello schermo)
+          // Right area (1/3 of screen) for map
           Expanded(
             flex: 1,
             child: _mapVisible ? _buildGoogleMap() : const SizedBox(),
