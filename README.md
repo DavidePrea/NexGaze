@@ -53,12 +53,11 @@ NexGaze leverages a smartphone-centric architecture:
 
 ### Icons
 
-*   `assets/icons/{cloud, compass_arrow, cycling, hiking, rain, relax, running, skiing, sun, yoga}.png`
+*   `assets/icons/
 
 ### Images
 
-*   `assets/images/{mode1, mode2, mode3, mode4, mode5, mode6, nexgaze, nexgaze_logo}.png`
-*   Legacy UI: `assets/images/OLD-mode{1-6}.png`
+*   `assets/images/
 
 ### Fonts
 
@@ -66,7 +65,7 @@ NexGaze leverages a smartphone-centric architecture:
 
 ### Videos
 
-*   `assets/videos/`:   video assets.
+*   `assets/videos/`:   video assets for yoga and relax.
 
 ## Installation
 
